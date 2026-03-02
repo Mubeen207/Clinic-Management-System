@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { auth, db } from "../lib/firebase";
+import { auth, db } from "../../lib/firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/router";
-import { useAuth } from "../lib/authContext";
+import { useAuth } from "../../lib/authContext";
 
 export default function Login() {
   const [email, setEmail] = useState("");

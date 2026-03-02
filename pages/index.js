@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useRouter } from "next/router";
-import { useAuth } from "./lib/authContext";
+import { useAuth } from "../lib/authContext";
 
 export default function Home() {
   const { user } = useAuth();

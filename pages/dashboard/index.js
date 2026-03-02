@@ -1,4 +1,4 @@
-import { useAuth } from "../lib/authContext";
+import { useAuth } from "../../lib/authContext";
 import AdminDashboard from "./AdminDashboard";
 import DoctorDashboard from "./DoctorDashboard";
 import StaffDashboard from "./StaffDashboard";

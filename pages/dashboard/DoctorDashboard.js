@@ -6,8 +6,8 @@ import {
   onSnapshot,
   orderBy,
 } from "firebase/firestore";
-import { db } from "../lib/firebase";
-import { useAuth } from "../lib/authContext";
+import { db } from "../../lib/firebase";
+import { useAuth } from "../../lib/authContext";
 import Link from "next/link";
 
 export default function DoctorDashboard() {

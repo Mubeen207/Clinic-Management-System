@@ -1,8 +1,8 @@
-import { useAuth } from "../lib/authContext";
+import { useAuth } from "../../lib/authContext";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { db } from "../lib/firebase";
+import { db } from "../../lib/firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
 
 export default function AdminDashboard() {

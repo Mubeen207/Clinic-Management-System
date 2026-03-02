@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, query, onSnapshot, orderBy } from "firebase/firestore";
-import { db } from "../lib/firebase";
-import { useAuth } from "../lib/authContext";
+import { db } from "../../lib/firebase";
+import { useAuth } from "../../lib/authContext";
 import Link from "next/link";
 
 export default function StaffDashboard() {
