@@ -1,18 +1,47 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { auth, db } from "./firebase";
-import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { useRouter } from "next/router";
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
+const router = useRouter();
+  const logout = async () => {
+    try {
+      await signOut(auth);
+      setUser(null);
+      setRole(null);
+      router.push("/login"); // Logout hote hi login par bhej dega
+    } catch (error) {
+      console.error("Logout Error:", error);
+    }
+  };
 
   useEffect(() => {
-    // 1. Client-side par pehle se maujood data uthao
-    const storedUser = localStorage.getItem("hospital_user");
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUser(user);
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        if (userDoc.exists()) {
+          setRole(userDoc.data().role);
+        }
+      } else {
+        setUser(null);
+        setRole(null);
+      }
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    // 1. Safe Client-side check for stored data
+    const storedUser = typeof window !== "undefined" ? localStorage.getItem("hospital_user") : null;
+    
     if (storedUser) {
       try {
         const parsed = JSON.parse(storedUser);
@@ -27,8 +56,9 @@ export function AuthProvider({ children }) {
     const unsub = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         try {
-          // Firestore se role fetch karein
-          const snap = await getDoc(doc(db, "users", currentUser.uid));
+          // Fetch role from Firestore
+          const docRef = doc(db, "users", currentUser.uid);
+          const snap = await getDoc(docRef);
           
           if (snap.exists()) {
             const userRole = snap.data().role;
@@ -41,9 +71,9 @@ export function AuthProvider({ children }) {
             setUser(currentUser);
             setRole(userRole);
           } else {
-            // Agar signup ke foran baad snap na mile (thori dair lagti hai)
+            // Handle case where user is in Auth but not in Firestore yet
             setUser(currentUser);
-            // setRole(null) ya koi default role
+            setRole(null);
           }
         } catch (err) {
           console.error("Firestore error:", err);
@@ -53,25 +83,28 @@ export function AuthProvider({ children }) {
         setUser(null);
         setRole(null);
       }
+      
+      // Crucial: Set loading to false ONLY after the first check is complete
       setLoading(false);
     });
 
     return () => unsub();
   }, []);
 
+  // Avoid Hydration Mismatch: Don't render anything until loading is false
+  // OR provide a stable initial state.
+  if (loading) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <p className="mt-4 text-gray-600 font-medium">Setting up your dashboard...</p>
+      </div>
+    );
+  }
+
   return (
-    <AuthContext.Provider value={{ user, role, loading }}>
-      {/* Pro-tip: Hackathon mein 'Loading...' ki jagah 
-         aik acha sa spinner ya hospital logo dikha dein 
-      */}
-      {!loading ? (
-        children
-      ) : (
-        <div className="h-screen flex flex-col items-center justify-center bg-gray-50">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="mt-4 text-gray-600 font-medium">Setting up your dashboard...</p>
-        </div>
-      )}
+    <AuthContext.Provider value={{ user, role, loading , logout }}>
+      {children}
     </AuthContext.Provider>
   );
 }
