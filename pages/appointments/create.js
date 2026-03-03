@@ -4,7 +4,7 @@ import {
   collection,
   addDoc,
   getDocs,
-  serverTimestamp
+  serverTimestamp,
 } from "firebase/firestore";
 import { useRouter } from "next/router";
 import Link from "next/link";
