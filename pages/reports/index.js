@@ -152,7 +152,7 @@ function ReportsDashboard() {
                           <td className="px-6 py-4 text-right flex justify-end gap-2">
                             <Link href={`/reports/${app.id}`}>
                               <Button variant="secondary" size="sm" className="gap-2">
-                                <FileText className="w-4 h-4" /> View PDF View
+                                <FileText className="w-4 h-4" /> View PDF
                               </Button>
                             </Link>
                           </td>

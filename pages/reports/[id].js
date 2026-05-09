@@ -133,4 +133,4 @@ function ReportViewer() {
   );
 }
 
-export default withAuth(ReportViewer, ["admin", "doctor", "staff", "receptionist", "patient"]);
+export default withAuth(ReportViewer, ["admin", "doctor", "staff", "receptionist", "patient", "accountant"]);
