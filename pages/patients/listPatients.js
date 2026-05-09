@@ -17,6 +17,8 @@ function ListPatients() {
     const q = query(collection(db, "patients"), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(q, (snap) => {
       setPatients(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      console.error("Error fetching patients:", error);
     });
     return () => unsub();
   }, []);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, where, updateDoc, doc, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, where, updateDoc, doc, addDoc, serverTimestamp } from "firebase/firestore";
 import { Search, ShieldAlert, ShieldCheck } from "lucide-react";
 import { toast } from "react-hot-toast";
 
@@ -22,14 +22,15 @@ function StaffList() {
   const [actionType, setActionType] = useState(""); // "blacklist" or "whitelist"
   const [updating, setUpdating] = useState(false);
 
-  const fetchStaff = async () => {
-    const q = query(collection(db, "users"), where("role", "in", ["staff", "receptionist", "accountant"]));
-    const snap = await getDocs(q);
-    setStaff(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-  };
-
   useEffect(() => {
-    fetchStaff();
+    const q = query(collection(db, "users"), where("role", "in", ["staff", "receptionist", "accountant"]));
+    const unsub = onSnapshot(q, (snap) => {
+      setStaff(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    }, (err) => {
+      console.error("Error fetching staff:", err);
+      toast.error("Failed to sync staff list.");
+    });
+    return () => unsub();
   }, []);
 
   const openModal = (targetUser, type) => {
@@ -66,7 +67,7 @@ function StaffList() {
 
       toast.success(`User ${newStatus === "active" ? "whitelisted" : "blacklisted"} successfully!`);
       setIsModalOpen(false);
-      fetchStaff(); // Refresh list
+      setIsModalOpen(false);
     } catch (error) {
       toast.error("Failed to update status.");
     } finally {

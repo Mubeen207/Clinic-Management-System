@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, where, updateDoc, doc, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, where, updateDoc, doc, addDoc, serverTimestamp } from "firebase/firestore";
 import { Search, ShieldAlert, ShieldCheck } from "lucide-react";
 import { toast } from "react-hot-toast";
 
@@ -21,14 +21,15 @@ function DoctorList() {
   const [actionType, setActionType] = useState(""); // "blacklist" or "whitelist"
   const [updating, setUpdating] = useState(false);
 
-  const fetchDoctors = async () => {
-    const q = query(collection(db, "users"), where("role", "==", "doctor"));
-    const snap = await getDocs(q);
-    setDoctors(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-  };
-
   useEffect(() => {
-    fetchDoctors();
+    const q = query(collection(db, "users"), where("role", "==", "doctor"));
+    const unsub = onSnapshot(q, (snap) => {
+      setDoctors(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    }, (err) => {
+      console.error("Error fetching doctors:", err);
+      toast.error("Failed to sync doctors list.");
+    });
+    return () => unsub();
   }, []);
 
   const openModal = (targetUser, type) => {
@@ -65,7 +66,7 @@ function DoctorList() {
 
       toast.success(`Doctor ${newStatus === "active" ? "whitelisted" : "blacklisted"} successfully!`);
       setIsModalOpen(false);
-      fetchDoctors(); // Refresh list
+      setIsModalOpen(false);
     } catch (error) {
       toast.error("Failed to update status.");
     } finally {

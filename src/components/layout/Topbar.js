@@ -1,13 +1,21 @@
-import { Bell, Search, UserCircle } from "lucide-react";
+import { Bell, Search, UserCircle, Menu } from "lucide-react";
 import { useAuth } from "@/src/context/AuthContext";
 
-export function Topbar() {
+export function Topbar({ onMenuClick }) {
   const { user, role } = useAuth();
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6 lg:px-8">
-      <div className="flex flex-1 items-center">
-        <div className="w-full max-w-md">
+    <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6 lg:px-8 shadow-sm">
+      <div className="flex flex-1 items-center gap-4">
+        <button 
+          onClick={onMenuClick}
+          className="md:hidden p-2 -ml-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <span className="sr-only">Open sidebar</span>
+          <Menu className="h-6 w-6" aria-hidden="true" />
+        </button>
+        
+        <div className="w-full max-w-md hidden sm:block">
           <label htmlFor="search" className="sr-only">
             Search
           </label>

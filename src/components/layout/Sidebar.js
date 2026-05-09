@@ -16,7 +16,8 @@ import {
   Stethoscope,
   MessageSquare,
   Megaphone,
-  AlertTriangle
+  AlertTriangle,
+  X
 } from "lucide-react";
 
 const getNavigation = (role) => {
@@ -67,7 +68,7 @@ const getNavigation = (role) => {
   ];
 };
 
-export function Sidebar() {
+export function Sidebar({ onClose }) {
   const router = useRouter();
   const { user, role, logout } = useAuth();
   const [totalUnread, setTotalUnread] = useState(0);
@@ -94,11 +95,20 @@ export function Sidebar() {
 
   return (
     <div className="flex h-full w-64 flex-col border-r border-gray-200 bg-white">
-      <div className="flex h-16 items-center justify-center border-b border-gray-200 px-4">
+      <div className="flex h-16 items-center justify-between border-b border-gray-200 px-4">
         <div className="flex items-center gap-2 font-bold text-xl text-blue-600">
           <Stethoscope className="h-6 w-6" />
           <span>CareClinic</span>
         </div>
+        {onClose && (
+          <button 
+            onClick={onClose}
+            className="md:hidden p-2 -mr-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md focus:outline-none"
+          >
+            <span className="sr-only">Close sidebar</span>
+            <X className="h-6 w-6" aria-hidden="true" />
+          </button>
+        )}
       </div>
       
       <div className="flex-1 overflow-y-auto py-4">
