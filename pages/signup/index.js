@@ -100,7 +100,6 @@ export default function Signup() {
             <option value="staff">Staff / Receptionist</option>
             <option value="doctor">Doctor</option>
             <option value="accountant">Accountant</option>
-            <option value="admin">Administrator</option>
           </select>
         </div>
 
