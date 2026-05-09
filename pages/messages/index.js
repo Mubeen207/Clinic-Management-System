@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, where, increment } from "firebase/firestore";
-import { Send, Search, User, MoreVertical, Edit2, Trash2, Check, CheckCheck } from "lucide-react";
+import { Send, Search, User, MoreVertical, Edit2, Trash2, Check, CheckCheck, ArrowLeft } from "lucide-react";
 import { toast } from "react-hot-toast";
 
 import { db } from "@/src/services/firebase/config";
@@ -173,10 +173,10 @@ function Messages() {
 
   return (
     <DashboardLayout>
-      <div className="h-[calc(100vh-8rem)] flex overflow-hidden border rounded-xl bg-white shadow-sm">
+      <div className="h-[calc(100vh-8rem)] flex overflow-hidden border rounded-xl bg-white shadow-sm relative">
         
         {/* Sidebar Contacts list */}
-        <div className="w-1/3 border-r flex flex-col bg-gray-50">
+        <div className={`border-r flex-col bg-gray-50 w-full md:w-1/3 ${activeUser ? 'hidden md:flex' : 'flex'}`}>
           <div className="p-4 border-b bg-white">
             <h2 className="text-lg font-bold text-gray-900 mb-4">Conversations</h2>
             <div className="relative">
@@ -253,11 +253,17 @@ function Messages() {
         </div>
 
         {/* Chat Pane */}
-        <div className="w-2/3 flex flex-col bg-white relative">
+        <div className={`flex-col bg-white relative w-full md:w-2/3 ${!activeUser ? 'hidden md:flex' : 'flex'}`}>
           {activeUser ? (
             <>
               {/* Chat Header */}
               <div className="p-4 border-b flex items-center gap-3 bg-white shadow-sm z-10">
+                <button 
+                  onClick={() => setActiveUser(null)}
+                  className="md:hidden p-2 -ml-2 text-gray-500 hover:bg-gray-100 rounded-full"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
                 <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold">
                   {activeUser.name ? activeUser.name[0] : <User className="w-5 h-5" />}
                 </div>

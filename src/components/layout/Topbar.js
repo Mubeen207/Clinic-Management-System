@@ -15,7 +15,7 @@ export function Topbar({ onMenuClick }) {
           <Menu className="h-6 w-6" aria-hidden="true" />
         </button>
         
-        <div className="w-full max-w-md hidden sm:block">
+        <div className="w-full max-w-md flex-1">
           <label htmlFor="search" className="sr-only">
             Search
           </label>
@@ -26,8 +26,8 @@ export function Topbar({ onMenuClick }) {
             <input
               id="search"
               name="search"
-              className="block w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:text-sm"
-              placeholder="Search patients, appointments..."
+              className="block w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="Search..."
               type="search"
             />
           </div>
