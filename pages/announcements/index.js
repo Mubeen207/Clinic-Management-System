@@ -47,7 +47,11 @@ function Announcements() {
         createdAt: serverTimestamp(),
         reactions: {
           like: [],
-          heart: []
+          heart: [],
+          fire: [],
+          eyes: [],
+          check: [],
+          warning: []
         }
       });
       setTitle("");
@@ -62,15 +66,26 @@ function Announcements() {
   };
 
   const handleReaction = async (announcementId, currentReactions, type) => {
+    // Make a deep copy of current reactions to mutate
     const updatedReactions = { ...currentReactions };
-    const userList = updatedReactions[type] || [];
     
-    if (userList.includes(user.uid)) {
-      // remove reaction
-      updatedReactions[type] = userList.filter(uid => uid !== user.uid);
-    } else {
-      // add reaction
-      updatedReactions[type] = [...userList, user.uid];
+    // Ensure all reaction arrays exist
+    const reactionTypes = ["like", "heart", "fire", "eyes", "check", "warning"];
+    reactionTypes.forEach(rt => {
+      if (!updatedReactions[rt]) updatedReactions[rt] = [];
+    });
+
+    // Check if user is already in the selected type
+    const isAlreadyReactedWithThisType = updatedReactions[type].includes(user.uid);
+
+    // 1. Remove user from ALL reaction types (enforcing ONLY ONE reaction)
+    reactionTypes.forEach(rt => {
+      updatedReactions[rt] = updatedReactions[rt].filter(uid => uid !== user.uid);
+    });
+
+    // 2. If they were NOT already reacting with this specific type, add it
+    if (!isAlreadyReactedWithThisType) {
+      updatedReactions[type].push(user.uid);
     }
 
     try {
@@ -81,6 +96,15 @@ function Announcements() {
       toast.error("Failed to update reaction.");
     }
   };
+
+  const reactionEmojis = [
+    { type: "like", icon: "👍" },
+    { type: "heart", icon: "❤️" },
+    { type: "fire", icon: "🔥" },
+    { type: "eyes", icon: "👀" },
+    { type: "check", icon: "✅" },
+    { type: "warning", icon: "⚠️" }
+  ];
 
   const getPriorityIcon = (prio) => {
     if (prio === "Emergency") return <AlertCircle className="w-5 h-5 text-red-600" />;
@@ -178,28 +202,26 @@ function Announcements() {
                     {ann.content}
                   </div>
 
-                  <div className="mt-6 pl-[52px] flex gap-3 border-t pt-4">
-                    <button 
-                      onClick={() => handleReaction(ann.id, ann.reactions || {}, "like")}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                        (ann.reactions?.like || []).includes(user.uid) 
-                        ? "bg-blue-100 text-blue-700" 
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      <ThumbsUp className="w-4 h-4" /> {(ann.reactions?.like || []).length}
-                    </button>
-                    
-                    <button 
-                      onClick={() => handleReaction(ann.id, ann.reactions || {}, "heart")}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                        (ann.reactions?.heart || []).includes(user.uid) 
-                        ? "bg-red-100 text-red-700" 
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      <Heart className="w-4 h-4" /> {(ann.reactions?.heart || []).length}
-                    </button>
+                  <div className="mt-6 pl-[52px] flex flex-wrap gap-2 border-t pt-4">
+                    {reactionEmojis.map((reaction) => {
+                      const count = (ann.reactions?.[reaction.type] || []).length;
+                      const hasReacted = (ann.reactions?.[reaction.type] || []).includes(user.uid);
+                      
+                      return (
+                        <button 
+                          key={reaction.type}
+                          onClick={() => handleReaction(ann.id, ann.reactions || {}, reaction.type)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                            hasReacted
+                            ? "bg-blue-100 text-blue-700 ring-1 ring-blue-300" 
+                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          }`}
+                        >
+                          <span className="text-base leading-none">{reaction.icon}</span> 
+                          <span>{count > 0 ? count : ""}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </Card>
