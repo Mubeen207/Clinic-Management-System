@@ -1,7 +1,10 @@
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useAuth } from "@/src/context/AuthContext";
 import { cn } from "@/src/utils/cn";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { db } from "@/src/services/firebase/config";
 import {
   LayoutDashboard,
   Users,
@@ -66,7 +69,24 @@ const getNavigation = (role) => {
 
 export function Sidebar() {
   const router = useRouter();
-  const { role, logout } = useAuth();
+  const { user, role, logout } = useAuth();
+  const [totalUnread, setTotalUnread] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, "chats"), where("participants", "array-contains", user.uid));
+    const unsub = onSnapshot(q, (snap) => {
+      let unread = 0;
+      snap.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.unreadCount && data.unreadCount[user.uid]) {
+          unread += data.unreadCount[user.uid];
+        }
+      });
+      setTotalUnread(unread);
+    });
+    return () => unsub();
+  }, [user]);
   
   if (!role) return null;
   
@@ -103,7 +123,12 @@ export function Sidebar() {
                   )}
                   aria-hidden="true"
                 />
-                {item.name}
+                <span className="flex-1">{item.name}</span>
+                {item.name === "Messages" && totalUnread > 0 && (
+                  <span className="ml-auto bg-red-500 text-white py-0.5 px-2 rounded-full text-xs font-bold shadow-sm">
+                    {totalUnread > 99 ? '99+' : totalUnread}
+                  </span>
+                )}
               </Link>
             );
           })}
