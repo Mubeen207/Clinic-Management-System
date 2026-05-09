@@ -10,12 +10,17 @@ import {
   Settings,
   CreditCard,
   LogOut,
-  Stethoscope
+  Stethoscope,
+  MessageSquare,
+  Megaphone,
+  AlertTriangle
 } from "lucide-react";
 
 const getNavigation = (role) => {
   const baseNav = [
     { name: "Dashboard", href: `/dashboard/${role === "admin" ? "Admin" : role === "doctor" ? "Doctor" : role === "accountant" ? "Accountant" : "Staff"}Dashboard`, icon: LayoutDashboard },
+    { name: "Messages", href: "/messages", icon: MessageSquare },
+    { name: "Announcements", href: "/announcements", icon: Megaphone },
     { name: "Appointments", href: "/appointments/list", icon: Calendar },
     { name: "Patients", href: "/patients/listPatients", icon: Users },
   ];
@@ -25,6 +30,7 @@ const getNavigation = (role) => {
       ...baseNav,
       { name: "Doctors", href: "/doctors/list", icon: Stethoscope },
       { name: "Staff", href: "/staff/list", icon: Users },
+      { name: "Complaints", href: "/complaints", icon: AlertTriangle },
       { name: "Billing", href: "/billing", icon: CreditCard },
       { name: "Reports", href: "/reports", icon: FileText },
     ];
@@ -35,20 +41,25 @@ const getNavigation = (role) => {
       ...baseNav,
       { name: "My Schedule", href: "/schedule", icon: Calendar },
       { name: "Prescriptions", href: "/prescriptions", icon: FileText },
+      { name: "Complaints", href: "/complaints", icon: AlertTriangle },
     ];
   }
 
   if (role === "accountant") {
     return [
       { name: "Dashboard", href: "/dashboard/AccountantDashboard", icon: LayoutDashboard },
+      { name: "Messages", href: "/messages", icon: MessageSquare },
+      { name: "Announcements", href: "/announcements", icon: Megaphone },
       { name: "Billing", href: "/billing", icon: CreditCard },
       { name: "Reports", href: "/reports", icon: FileText },
+      { name: "Complaints", href: "/complaints", icon: AlertTriangle },
     ];
   }
 
   // staff
   return [
     ...baseNav,
+    { name: "Complaints", href: "/complaints", icon: AlertTriangle },
     { name: "Billing", href: "/billing", icon: CreditCard },
   ];
 };
