@@ -1,200 +1,160 @@
 import { useState, useEffect } from "react";
-import { db } from "../../lib/firebase";
-import {
-  collection,
-  addDoc,
-  getDocs,
-  serverTimestamp,
-} from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where, serverTimestamp } from "firebase/firestore";
 import { useRouter } from "next/router";
-import Link from "next/link";
+import { toast } from "react-hot-toast";
 
-export default function CreateAppointment() {
+import { db } from "@/src/services/firebase/config";
+import { DashboardLayout } from "@/src/components/layout/DashboardLayout";
+import { withAuth } from "@/src/components/layout/RouteGuard";
+import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/common/Card";
+import { Input } from "@/src/components/common/Input";
+import { Button } from "@/src/components/common/Button";
+
+function CreateAppointment() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
   const [patients, setPatients] = useState([]);
+  const [doctors, setDoctors] = useState([]);
+  
   const [formData, setFormData] = useState({
     patientId: "",
+    patientName: "",
+    doctorId: "",
+    doctorName: "",
     date: "",
     time: "",
     reason: "",
+    status: "Pending", // Pending, Confirmed, Cancelled, Completed
   });
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   useEffect(() => {
-    const fetchPatients = async () => {
-      const snap = await getDocs(collection(db, "patients"));
-      setPatients(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+    const fetchPatientsAndDoctors = async () => {
+      try {
+        const pSnap = await getDocs(collection(db, "patients"));
+        setPatients(pSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+        const dSnap = await getDocs(query(collection(db, "users"), where("role", "==", "doctor")));
+        setDoctors(dSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (error) {
+        toast.error("Failed to load options.");
+      }
     };
-    fetchPatients();
+    fetchPatientsAndDoctors();
   }, []);
+
+  const handlePatientChange = (e) => {
+    const pId = e.target.value;
+    const pData = patients.find(p => p.id === pId);
+    setFormData({ ...formData, patientId: pId, patientName: pData ? pData.name : "" });
+  };
+
+  const handleDoctorChange = (e) => {
+    const dId = e.target.value;
+    const dData = doctors.find(d => d.id === dId);
+    setFormData({ ...formData, doctorId: dId, doctorName: dData ? dData.name : "" });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!formData.patientId || !formData.doctorId) {
+      toast.error("Please select a patient and a doctor.");
+      return;
+    }
+
     setLoading(true);
     try {
-      const selectedPatient = patients.find((p) => p.id === formData.patientId);
       await addDoc(collection(db, "appointments"), {
         ...formData,
-        patientName: selectedPatient?.name || "Unknown",
-        status: "Pending",
         createdAt: serverTimestamp(),
       });
+      toast.success("Appointment booked successfully!");
       router.push("/appointments/list");
-    } catch (err) {
-      alert(err.message);
+    } catch (error) {
+      toast.error("Error booking appointment.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F0F4F8] flex items-center justify-center p-6">
-      <div className="w-full max-w-lg bg-white/90 backdrop-blur-lg rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.05)] border border-white overflow-hidden">
-        <div className="h-2 w-full bg-linear-to-r from-blue-400 via-indigo-500 to-purple-500"></div>
+    <DashboardLayout>
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Book Appointment</h1>
+          <p className="text-sm text-gray-500">Schedule a new visit for a patient.</p>
+        </div>
 
-        <div className="p-10">
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-black text-slate-800 tracking-tight">
-                Book Session
-              </h1>
-              <p className="text-slate-500 text-sm font-medium mt-1">
-                Schedule a new visit
-              </p>
-            </div>
-            <Link href="/dashboard">
-              <button className="p-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl transition-all active:scale-90 shadow-inner">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-                  />
-                </svg>
-              </button>
-            </Link>
-          </div>
-
-          <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-            <div className="space-y-2">
-              <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">
-                Select Patient
-              </label>
-              <div className="relative group">
-                <select
-                  required
-                  className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none transition-all appearance-none cursor-pointer font-semibold text-slate-700"
-                  onChange={(e) =>
-                    setFormData({ ...formData, patientId: e.target.value })
-                  }
-                >
-                  <option value="">Choose from records...</option>
-                  {patients.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+        <Card>
+          <CardHeader>
+            <CardTitle>Appointment Details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Select Patient *</label>
+                  <select
+                    required
+                    className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formData.patientId}
+                    onChange={handlePatientChange}
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
+                    <option value="">-- Choose Patient --</option>
+                    {patients.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} ({p.phone})</option>
+                    ))}
+                  </select>
                 </div>
-              </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">
-                  Date
-                </label>
-                <input
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Select Doctor *</label>
+                  <select
+                    required
+                    className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formData.doctorId}
+                    onChange={handleDoctorChange}
+                  >
+                    <option value="">-- Choose Doctor --</option>
+                    {doctors.map(d => (
+                      <option key={d.id} value={d.id}>{d.name || d.email}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <Input
+                  label="Date *"
                   type="date"
                   required
-                  className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none transition-all font-semibold text-slate-700"
-                  onChange={(e) =>
-                    setFormData({ ...formData, date: e.target.value })
-                  }
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                 />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">
-                  Time
-                </label>
-                <input
+                
+                <Input
+                  label="Time Slot *"
                   type="time"
                   required
-                  className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none transition-all font-semibold text-slate-700"
-                  onChange={(e) =>
-                    setFormData({ ...formData, time: e.target.value })
-                  }
+                  value={formData.time}
+                  onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                />
+
+                <Input
+                  label="Reason for Visit / Symptoms"
+                  className="md:col-span-2"
+                  value={formData.reason}
+                  onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                 />
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">
-                Reason for Visit
-              </label>
-              <textarea
-                placeholder="e.g. Regular checkup or specific symptoms"
-                rows="3"
-                className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none transition-all font-semibold text-slate-700 resize-none"
-                onChange={(e) =>
-                  setFormData({ ...formData, reason: e.target.value })
-                }
-              />
-            </div>
-
-            <button
-              disabled={loading}
-              className={`w-full mt-4 p-5 rounded-3xl font-black text-lg transition-all shadow-xl flex items-center justify-center gap-3 active:scale-[0.97] ${
-                loading
-                  ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
-                  : "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200"
-              }`}
-            >
-              {loading ? (
-                <div className="w-6 h-6 border-4 border-slate-400 border-t-white rounded-full animate-spin"></div>
-              ) : (
-                <>
-                  <svg
-                    className="w-6 h-6"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                    />
-                  </svg>
-                  Confirm Appointment
-                </>
-              )}
-            </button>
-          </form>
-        </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <Button type="button" variant="secondary" onClick={() => router.back()}>Cancel</Button>
+                <Button type="submit" isLoading={loading}>Confirm Booking</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }
+
+export default withAuth(CreateAppointment, ["admin", "staff", "receptionist"]);

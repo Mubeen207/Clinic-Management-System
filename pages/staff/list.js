@@ -1,188 +1,191 @@
 import { useEffect, useState } from "react";
-import { db } from "../../lib/firebase";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  updateDoc,
-} from "firebase/firestore";
-import Link from "next/link";
+import { collection, getDocs, query, where, updateDoc, doc, addDoc, serverTimestamp } from "firebase/firestore";
+import { Search, ShieldAlert, ShieldCheck } from "lucide-react";
+import { toast } from "react-hot-toast";
 
-export default function StaffList() {
-  const [staffMembers, setStaffMembers] = useState([]);
-  const [loading, setLoading] = useState(true);
+import { db } from "@/src/services/firebase/config";
+import { DashboardLayout } from "@/src/components/layout/DashboardLayout";
+import { withAuth } from "@/src/components/layout/RouteGuard";
+import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/common/Card";
+import { Button } from "@/src/components/common/Button";
+import { Input } from "@/src/components/common/Input";
+import { useAuth } from "@/src/context/AuthContext";
+
+function StaffList() {
+  const { user } = useAuth();
+  const [staff, setStaff] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [reason, setReason] = useState("");
+  const [actionType, setActionType] = useState(""); // "blacklist" or "whitelist"
+  const [updating, setUpdating] = useState(false);
+
+  const fetchStaff = async () => {
+    const q = query(collection(db, "users"), where("role", "in", ["staff", "receptionist", "accountant"]));
+    const snap = await getDocs(q);
+    setStaff(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  };
 
   useEffect(() => {
-    const fetchStaff = async () => {
-      try {
-        const q = query(
-          collection(db, "users"),
-          where("role", "==", "receptionist"),
-        );
-        const querySnapshot = await getDocs(q);
-        const staffData = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setStaffMembers(staffData);
-      } catch (error) {
-        console.error("Error fetching staff:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchStaff();
   }, []);
 
-  const toggleBlacklist = async (id, currentStatus) => {
-    const newStatus =
-      currentStatus === "blacklisted" ? "active" : "blacklisted";
-    const confirmMsg =
-      newStatus === "blacklisted"
-        ? "🚫 Are you sure? This staff member will be logged out and blocked immediately."
-        : "✅ Restore access for this staff member?";
+  const openModal = (targetUser, type) => {
+    setSelectedUser(targetUser);
+    setActionType(type);
+    setReason("");
+    setIsModalOpen(true);
+  };
 
-    if (confirm(confirmMsg)) {
-      try {
-        const staffRef = doc(db, "users", id);
-        await updateDoc(staffRef, { status: newStatus });
+  const handleStatusChange = async (e) => {
+    e.preventDefault();
+    if (!reason.trim()) {
+      toast.error("Please provide a reason.");
+      return;
+    }
+    setUpdating(true);
+    const newStatus = actionType === "blacklist" ? "blacklisted" : "active";
 
-        setStaffMembers(
-          staffMembers.map((s) =>
-            s.id === id ? { ...s, status: newStatus } : s,
-          ),
-        );
-      } catch (error) {
-        console.error("Error updating status:", error);
-        alert("Failed to update status.");
-      }
+    try {
+      await updateDoc(doc(db, "users", selectedUser.id), {
+        status: newStatus
+      });
+
+      await addDoc(collection(db, "statusLogs"), {
+        targetUserId: selectedUser.id,
+        targetUserName: selectedUser.name || selectedUser.email,
+        targetUserRole: selectedUser.role,
+        actionBy: user.uid,
+        actionByName: user.name || user.email,
+        action: newStatus,
+        reason,
+        createdAt: serverTimestamp()
+      });
+
+      toast.success(`User ${newStatus === "active" ? "whitelisted" : "blacklisted"} successfully!`);
+      setIsModalOpen(false);
+      fetchStaff(); // Refresh list
+    } catch (error) {
+      toast.error("Failed to update status.");
+    } finally {
+      setUpdating(false);
     }
   };
 
-  if (loading)
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen w-full animate-in fade-in duration-500">
-        <div className="relative flex items-center gap-4 bg-white/80 backdrop-blur-md px-8 py-5 rounded-4xl shadow-lg border border-slate-100">
-          <div className="flex gap-1">
-            <span className="w-1.5 h-6 bg-blue-600 rounded-full animate-bounce"></span>
-            <span className="w-1.5 h-6 bg-blue-500 rounded-full animate-bounce delay-75"></span>
-            <span className="w-1.5 h-6 bg-blue-400 rounded-full animate-bounce delay-150"></span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-slate-800 font-black text-sm uppercase tracking-widest">
-              Retrieving Staff
-            </span>
-            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest animate-pulse">
-              Please Wait...
-            </span>
-          </div>
-        </div>
-      </div>
-    );
+  const filteredStaff = staff.filter(s => s.name?.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
-    <div className="p-8 bg-gray-50 min-h-screen text-black font-sans">
-      <div className="flex justify-between items-center mb-8">
+    <DashboardLayout>
+      <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800 tracking-tight">
-            Staff Management
-          </h1>
-          <p className="text-gray-500 font-medium">
-            Manage Receptionists and Support Personnel
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">Staff Directory</h1>
+          <p className="text-sm text-gray-500">View all clinic staff and receptionists. Manage access via Blacklist.</p>
         </div>
-        <Link href="/dashboard/AdminDashboard">
-          <button className="bg-white border border-gray-200 text-gray-700 px-5 py-2 rounded-xl hover:bg-gray-50 transition shadow-sm font-bold text-sm">
-            ← Dashboard
-          </button>
-        </Link>
+
+        <Card>
+          <CardHeader className="border-b bg-gray-50/50 flex flex-row items-center justify-between py-4">
+            <CardTitle>All Staff</CardTitle>
+            <div className="relative w-64">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+              <input
+                type="text"
+                placeholder="Search by name..."
+                className="pl-9 flex h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left text-gray-500">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-6 py-3">Name</th>
+                    <th className="px-6 py-3">Role</th>
+                    <th className="px-6 py-3">Email</th>
+                    <th className="px-6 py-3">Status</th>
+                    <th className="px-6 py-3 text-right">Access Control</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredStaff.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="px-6 py-10 text-center text-gray-500">
+                        No staff found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredStaff.map((person) => (
+                      <tr key={person.id} className="bg-white border-b hover:bg-gray-50">
+                        <td className="px-6 py-4 font-medium text-gray-900">
+                           {person.name || "Unnamed Staff"}
+                        </td>
+                        <td className="px-6 py-4 uppercase font-semibold text-xs text-blue-600">{person.role}</td>
+                        <td className="px-6 py-4">{person.email}</td>
+                        <td className="px-6 py-4">
+                           <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            person.status === "blacklisted" ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"
+                          }`}>
+                            {person.status || "active"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          {person.status === "blacklisted" ? (
+                            <Button variant="ghost" size="sm" className="text-green-600 hover:text-green-800" onClick={() => openModal(person, "whitelist")}>
+                              <ShieldCheck className="w-4 h-4 mr-1" /> Whitelist
+                            </Button>
+                          ) : (
+                            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-800" onClick={() => openModal(person, "blacklist")}>
+                              <ShieldAlert className="w-4 h-4 mr-1" /> Blacklist
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-gray-50/50 border-b">
-              <th className="p-5 font-bold text-gray-600 text-sm uppercase tracking-wider">
-                Name
-              </th>
-              <th className="p-5 font-bold text-gray-600 text-sm uppercase tracking-wider">
-                Email
-              </th>
-              <th className="p-5 font-bold text-gray-600 text-sm uppercase tracking-wider">
-                Status
-              </th>
-              <th className="p-5 font-bold text-gray-600 text-sm uppercase tracking-wider text-center">
-                Security Action
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {staffMembers.length === 0 ? (
-              <tr>
-                <td
-                  colSpan="4"
-                  className="p-20 text-center text-gray-400 font-medium italic"
-                >
-                  No staff members currently in the directory.
-                </td>
-              </tr>
-            ) : (
-              staffMembers.map((member) => (
-                <tr
-                  key={member.id}
-                  className="border-b hover:bg-blue-50/20 transition-colors"
-                >
-                  <td className="p-5 font-semibold text-gray-800">
-                    {member.name}
-                  </td>
-                  <td className="p-5 text-gray-600 font-medium">
-                    {member.email}
-                  </td>
-                  <td className="p-5">
-                    <span
-                      className={`px-4 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest shadow-sm ${
-                        member.status === "blacklisted"
-                          ? "bg-red-50 text-red-600 border border-red-100"
-                          : "bg-emerald-50 text-emerald-600 border border-emerald-100"
-                      }`}
-                    >
-                      {member.status === "blacklisted"
-                        ? "● Blacklisted"
-                        : "● Active"}
-                    </span>
-                  </td>
-                  <td className="p-5 text-center">
-                    <button
-                      onClick={() => toggleBlacklist(member.id, member.status)}
-                      className={`text-xs font-black uppercase tracking-tighter px-6 py-2.5 rounded-xl transition-all duration-300 shadow-sm border ${
-                        member.status === "blacklisted"
-                          ? "bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700 hover:shadow-emerald-200"
-                          : "bg-gray-900 text-white border-gray-800 hover:bg-black hover:shadow-gray-300"
-                      }`}
-                    >
-                      {member.status === "blacklisted"
-                        ? "✅ Whitelist Access"
-                        : "🚫 Blacklist Access"}
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="mt-6 bg-amber-50 border border-amber-100 p-4 rounded-xl">
-        <p className="text-amber-700 text-xs font-bold leading-relaxed">
-          <span className="mr-2">⚠️</span>
-          ADMIN NOTE: Blacklisting a receptionist will terminate their active
-          session and block all subsequent login attempts until they are
-          whitelisted.
-        </p>
-      </div>
-    </div>
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
+            <h2 className="text-xl font-bold mb-4">
+              {actionType === "blacklist" ? "Blacklist User" : "Whitelist User"}
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Are you sure you want to {actionType} <strong>{selectedUser?.name || selectedUser?.email}</strong>?
+            </p>
+            <form onSubmit={handleStatusChange}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reason for Action *</label>
+                <textarea
+                  required
+                  className="w-full rounded-md border border-gray-300 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="E.g., Suspicious activity, Violation of policy..."
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  rows={3}
+                />
+              </div>
+              <div className="flex justify-end gap-3">
+                <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+                <Button type="submit" isLoading={updating} className={actionType === "blacklist" ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}>
+                  Confirm {actionType}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </DashboardLayout>
   );
 }
+
+export default withAuth(StaffList, ["admin"]);

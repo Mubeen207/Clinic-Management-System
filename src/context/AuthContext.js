@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { auth, db } from "./firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "@/src/services/firebase/config";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useRouter } from "next/router";
+import { toast } from "react-hot-toast";
 
 const AuthContext = createContext();
 
@@ -25,25 +26,25 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
-    const storedUser =
-      typeof window !== "undefined"
-        ? localStorage.getItem("hospital_user")
-        : null;
+    // Initial sync from local storage for faster UI paints
+    const storedUser = typeof window !== "undefined" ? localStorage.getItem("hospital_user") : null;
     if (storedUser) {
       try {
         const parsed = JSON.parse(storedUser);
+        // eslint-disable-next-line
         setUser(parsed.user);
+        // eslint-disable-next-line
         setRole(parsed.role);
       } catch (e) {
         console.error("Storage error", e);
       }
     }
 
+    let userDocUnsub = null;
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        try {
-          const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-
+        userDocUnsub = onSnapshot(doc(db, "users", firebaseUser.uid), async (userDoc) => {
           if (userDoc.exists()) {
             const userData = userDoc.data();
             if (userData.status === "blacklisted") {
@@ -51,49 +52,43 @@ export function AuthProvider({ children }) {
               localStorage.removeItem("hospital_user");
               setUser(null);
               setRole(null);
+              toast.error("Your account has been blacklisted. Please contact administration.");
               router.push("/login");
             } else {
               const userRole = userData.role;
               const userDataToStore = {
-                user: { uid: firebaseUser.uid, email: firebaseUser.email },
+                user: { uid: firebaseUser.uid, email: firebaseUser.email, name: userData.name || firebaseUser.email },
                 role: userRole,
               };
 
-              localStorage.setItem(
-                "hospital_user",
-                JSON.stringify(userDataToStore),
-              );
-              setUser(firebaseUser);
+              localStorage.setItem("hospital_user", JSON.stringify(userDataToStore));
+              setUser(userDataToStore.user);
               setRole(userRole);
             }
           } else {
-            setUser(firebaseUser);
+            setUser({ uid: firebaseUser.uid, email: firebaseUser.email });
             setRole(null);
           }
-        } catch (err) {
-          console.error("Firestore error:", err);
-        }
+          setLoading(false);
+        }, (err) => {
+          console.error("Firestore snapshot error:", err);
+          setLoading(false);
+        });
       } else {
+        if (userDocUnsub) userDocUnsub();
         localStorage.removeItem("hospital_user");
         setUser(null);
         setRole(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (userDocUnsub) userDocUnsub();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  if (loading) {
-    return (
-      <div className="h-screen flex flex-col items-center justify-center bg-gray-50 text-black">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        <p className="mt-4 text-gray-600 font-medium">
-          Setting up your dashboard...
-        </p>
-      </div>
-    );
-  }
 
   return (
     <AuthContext.Provider value={{ user, role, loading, logout }}>

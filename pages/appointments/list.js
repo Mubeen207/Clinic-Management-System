@@ -1,162 +1,127 @@
 import { useEffect, useState } from "react";
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import Link from "next/link";
+import { CalendarPlus } from "lucide-react";
 
-export default function AppointmentList() {
+import { db } from "@/src/services/firebase/config";
+import { useAuth } from "@/src/context/AuthContext";
+import { DashboardLayout } from "@/src/components/layout/DashboardLayout";
+import { withAuth } from "@/src/components/layout/RouteGuard";
+import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/common/Card";
+import { Button } from "@/src/components/common/Button";
+
+function AppointmentsList() {
+  const { role, user } = useAuth();
   const [appointments, setAppointments] = useState([]);
+  const [filter, setFilter] = useState("All"); // All, Pending, Confirmed, Completed, Cancelled
 
   useEffect(() => {
-    const q = query(collection(db, "appointments"), orderBy("date", "asc"));
+    // Ideally if doctor, we only query their appointments.
+    // For simplicity in UI filter, we'll fetch all and filter client side, or better, query side.
+    const q = query(collection(db, "appointments"), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(q, (snap) => {
-      setAppointments(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      let data = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      if (role === "doctor") {
+        data = data.filter(d => d.doctorId === user.uid);
+      }
+      setAppointments(data);
     });
     return () => unsub();
-  }, []);
+  }, [role, user]);
+
+  const filtered = appointments.filter(a => filter === "All" ? true : a.status === filter);
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] p-4 md:p-10">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-black text-slate-900 tracking-tight">
-              Scheduled <span className="text-blue-600">Appointments</span>
-            </h1>
-            <p className="text-slate-500 font-medium mt-2">
-              Manage your daily patient flow and timing
-            </p>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900">Appointments List</h1>
+            <p className="text-sm text-gray-500">Manage patient bookings and schedules.</p>
           </div>
-
-          <div className="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
-            <Link href="/dashboard">
-              <button className="px-5 py-2.5 text-slate-600 hover:bg-slate-50 rounded-xl font-bold transition-all flex items-center gap-2">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-                  />
-                </svg>
-                Home
-              </button>
-            </Link>
+          {(role === "admin" || role === "staff" || role === "receptionist") && (
             <Link href="/appointments/create">
-              <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-blue-200 active:scale-95 flex items-center gap-2">
-                <span>+</span> Book New
-              </button>
+              <Button className="gap-2">
+                <CalendarPlus className="w-4 h-4" /> Book New
+              </Button>
             </Link>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-4xl shadow-[0_10px_40px_-15px_rgba(0,0,0,0.05)] border border-slate-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-100">
-                  <th className="p-6 text-left text-xs font-black text-slate-400 uppercase tracking-[0.2em]">
-                    Patient
-                  </th>
-                  <th className="p-6 text-left text-xs font-black text-slate-400 uppercase tracking-[0.2em]">
-                    Schedule
-                  </th>
-                  <th className="p-6 text-left text-xs font-black text-slate-400 uppercase tracking-[0.2em]">
-                    Status
-                  </th>
-                  <th className="p-6 text-center text-xs font-black text-slate-400 uppercase tracking-[0.2em]">
-                    Management
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {appointments.map((app) => (
-                  <tr
-                    key={app.id}
-                    className="hover:bg-blue-50/40 transition-all group"
-                  >
-                    <td className="p-6">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-2xl bg-linear-to-br from-blue-500 to-blue-600 text-white flex items-center justify-center font-bold shadow-lg shadow-blue-100 ring-4 ring-white">
-                          {app.patientName.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="font-bold text-slate-800">
-                            {app.patientName}
-                          </p>
-                          <p className="text-xs text-slate-400 font-medium">
-                            ID: #APP-{app.id.slice(-4)}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="p-6">
-                      <div className="flex flex-col">
-                        <span className="text-slate-700 font-bold flex items-center gap-2">
-                          <svg
-                            className="h-4 w-4 text-blue-500"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                            />
-                          </svg>
-                          {app.date}
-                        </span>
-                        <span className="text-slate-400 text-sm font-medium ml-6">
-                          {app.time}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td className="p-6">
-                      <span
-                        className={`px-4 py-1.5 rounded-full text-xs font-black tracking-wide flex w-fit items-center gap-1.5 ${
-                          app.status === "Pending"
-                            ? "bg-amber-50 text-amber-600 border border-amber-100"
-                            : "bg-emerald-50 text-emerald-600 border border-emerald-100"
-                        }`}
-                      >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full animate-pulse ${app.status === "Pending" ? "bg-amber-500" : "bg-emerald-500"}`}
-                        ></span>
-                        {app.status.toUpperCase()}
-                      </span>
-                    </td>
-
-                    <td className="p-6 text-center">
-                      <Link href={`/appointments/${app.id}`}>
-                        <button className="bg-slate-900 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-blue-600 transition-all shadow-md active:scale-95">
-                          Edit Session
-                        </button>
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {appointments.length === 0 && (
-            <div className="py-20 text-center bg-white">
-              <p className="text-slate-400 font-bold">
-                No appointments scheduled for today.
-              </p>
-            </div>
           )}
         </div>
+
+        <Card>
+          <CardHeader className="border-b bg-gray-50/50 flex flex-col sm:flex-row items-start sm:items-center justify-between py-4 gap-4">
+            <CardTitle>Schedule</CardTitle>
+            <div className="flex gap-2">
+              {["All", "Pending", "Confirmed", "Completed", "Cancelled"].map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`px-3 py-1 text-xs rounded-full font-medium transition ${
+                    filter === f ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left text-gray-500">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-6 py-3">Patient</th>
+                    <th className="px-6 py-3">Doctor</th>
+                    <th className="px-6 py-3">Date & Time</th>
+                    <th className="px-6 py-3">Status</th>
+                    <th className="px-6 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="px-6 py-10 text-center text-gray-500">
+                        No appointments found for this filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    filtered.map((app) => (
+                      <tr key={app.id} className="bg-white border-b hover:bg-gray-50">
+                        <td className="px-6 py-4 font-medium text-gray-900">
+                          {app.patientName || "Unknown"}
+                        </td>
+                        <td className="px-6 py-4">Dr. {app.doctorName || "Unassigned"}</td>
+                        <td className="px-6 py-4">
+                          {app.date} <span className="text-gray-300 mx-1">|</span> {app.time}
+                        </td>
+                        <td className="px-6 py-4">
+                           <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            app.status === "Completed" ? "bg-green-100 text-green-800"
+                            : app.status === "Cancelled" ? "bg-red-100 text-red-800"
+                            : app.status === "Confirmed" ? "bg-blue-100 text-blue-800"
+                            : "bg-yellow-100 text-yellow-800"
+                          }`}>
+                            {app.status || "Pending"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <Link href={app.status === "Completed" ? `/reports/${app.id}` : `/appointments/${app.id}`}>
+                            <Button variant="ghost" size="sm" className="text-blue-600">
+                              {app.status === "Completed" ? "View Report" : "Manage"}
+                            </Button>
+                          </Link>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }
+
+export default withAuth(AppointmentsList, ["admin", "staff", "receptionist", "doctor"]);
