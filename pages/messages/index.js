@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch, where, increment } from "firebase/firestore";
 import { Send, Search, User, MoreVertical, Edit2, Trash2, Check, CheckCheck } from "lucide-react";
 import { toast } from "react-hot-toast";
 
@@ -23,6 +23,8 @@ function Messages() {
   const [editMsgText, setEditMsgText] = useState("");
   const [activeMenu, setActiveMenu] = useState(null);
 
+  const [chatsData, setChatsData] = useState({});
+
   // Fetch all allowed users
   useEffect(() => {
     if (!user) return;
@@ -42,6 +44,20 @@ function Messages() {
     return uid1 > uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
   };
 
+  // Listen to active conversations for previews and unread counts
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, "chats"), where("participants", "array-contains", user.uid));
+    const unsub = onSnapshot(q, (snap) => {
+      const cData = {};
+      snap.docs.forEach(doc => {
+        cData[doc.id] = { id: doc.id, ...doc.data() };
+      });
+      setChatsData(cData);
+    });
+    return () => unsub();
+  }, [user]);
+
   // Listen to messages and mark as read
   useEffect(() => {
     if (!activeUser || !user) return;
@@ -49,6 +65,11 @@ function Messages() {
     const chatId = getChatId(user.uid, activeUser.id);
     const messagesRef = collection(db, "chats", chatId, "messages");
     const q = query(messagesRef, orderBy("timestamp", "asc"));
+
+    // Immediately clear unread count for this active chat
+    updateDoc(doc(db, "chats", chatId), {
+      [`unreadCount.${user.uid}`]: 0
+    }).catch(e => console.log("Init chat unread zeroing", e));
 
     const unsub = onSnapshot(q, async (snap) => {
       const msgs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -89,7 +110,11 @@ function Messages() {
       await setDoc(doc(db, "chats", chatId), {
         participants: [user.uid, activeUser.id],
         lastMessage: text,
-        lastMessageTime: serverTimestamp()
+        lastMessageTime: serverTimestamp(),
+        unreadCount: {
+          [user.uid]: 0,
+          [activeUser.id]: increment(1)
+        }
       }, { merge: true });
 
       await addDoc(collection(db, "chats", chatId, "messages"), {
@@ -170,27 +195,59 @@ function Messages() {
             {filteredUsers.length === 0 ? (
               <p className="p-4 text-center text-sm text-gray-500">No users found.</p>
             ) : (
-              filteredUsers.map(u => (
-                <div 
-                  key={u.id}
-                  onClick={() => {
-                    setActiveUser(u);
-                    setEditingMsgId(null);
-                    setActiveMenu(null);
-                  }}
-                  className={`flex items-center gap-3 p-4 cursor-pointer border-b transition-colors ${
-                    activeUser?.id === u.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-gray-100 border-l-4 border-l-transparent'
-                  }`}
-                >
-                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold">
-                    {u.name ? u.name[0] : <User className="w-5 h-5" />}
+              filteredUsers
+                .map(u => {
+                  const cId = getChatId(user.uid, u.id);
+                  const chatInfo = chatsData[cId];
+                  return { ...u, chatInfo, lastTime: chatInfo?.lastMessageTime?.toMillis() || 0 };
+                })
+                .sort((a, b) => b.lastTime - a.lastTime) // Sort by recent message
+                .map(u => {
+                const unread = u.chatInfo?.unreadCount?.[user.uid] || 0;
+                return (
+                  <div 
+                    key={u.id}
+                    onClick={() => {
+                      setActiveUser(u);
+                      setEditingMsgId(null);
+                      setActiveMenu(null);
+                      // Clear unread immediately on UI side
+                      if (u.chatInfo) {
+                        updateDoc(doc(db, "chats", u.chatInfo.id), {
+                          [`unreadCount.${user.uid}`]: 0
+                        }).catch(() => {});
+                      }
+                    }}
+                    className={`flex items-center gap-3 p-4 cursor-pointer border-b transition-colors ${
+                      activeUser?.id === u.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-gray-100 border-l-4 border-l-transparent'
+                    }`}
+                  >
+                    <div className="relative">
+                      <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-lg">
+                        {u.name ? u.name[0] : <User className="w-6 h-6" />}
+                      </div>
+                      {unread > 0 && (
+                        <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white shadow-sm">
+                          {unread > 99 ? '99+' : unread}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <div className="flex justify-between items-baseline mb-0.5">
+                        <p className={`font-semibold truncate ${unread > 0 ? 'text-black' : 'text-gray-900'}`}>{u.name}</p>
+                        {u.chatInfo?.lastMessageTime && (
+                          <span className={`text-[10px] ${unread > 0 ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
+                            {new Date(u.chatInfo.lastMessageTime.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-xs truncate ${unread > 0 ? 'text-gray-900 font-bold' : 'text-gray-500'}`}>
+                        {u.chatInfo?.lastMessage || u.role.toUpperCase()}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1 overflow-hidden">
-                    <p className="font-semibold text-gray-900 truncate">{u.name}</p>
-                    <p className="text-xs text-gray-500 uppercase">{u.role}</p>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
