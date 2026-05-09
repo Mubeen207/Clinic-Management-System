@@ -1,12 +1,12 @@
 import { useEffect, useState, useRef } from "react";
-import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, getDocs, doc, setDoc } from "firebase/firestore";
-import { Send, Search, User } from "lucide-react";
+import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, getDocs, doc, setDoc, updateDoc, deleteDoc, writeBatch } from "firebase/firestore";
+import { Send, Search, User, MoreVertical, Edit2, Trash2, Check, CheckCheck } from "lucide-react";
+import { toast } from "react-hot-toast";
 
 import { db } from "@/src/services/firebase/config";
 import { useAuth } from "@/src/context/AuthContext";
 import { DashboardLayout } from "@/src/components/layout/DashboardLayout";
 import { withAuth } from "@/src/components/layout/RouteGuard";
-import { Card } from "@/src/components/common/Card";
 
 function Messages() {
   const { user } = useAuth();
@@ -17,6 +17,11 @@ function Messages() {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef(null);
+
+  // Message Edit State
+  const [editingMsgId, setEditingMsgId] = useState(null);
+  const [editMsgText, setEditMsgText] = useState("");
+  const [activeMenu, setActiveMenu] = useState(null);
 
   // Fetch all allowed users
   useEffect(() => {
@@ -37,7 +42,7 @@ function Messages() {
     return uid1 > uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
   };
 
-  // Listen to messages for active chat
+  // Listen to messages and mark as read
   useEffect(() => {
     if (!activeUser || !user) return;
 
@@ -45,12 +50,28 @@ function Messages() {
     const messagesRef = collection(db, "chats", chatId, "messages");
     const q = query(messagesRef, orderBy("timestamp", "asc"));
 
-    const unsub = onSnapshot(q, (snap) => {
-      setMessages(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const unsub = onSnapshot(q, async (snap) => {
+      const msgs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setMessages(msgs);
+      
       // Scroll to bottom
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 100);
+
+      // Handle Read Receipts: find unread messages sent by the OTHER person
+      const unreadMsgs = snap.docs.filter(d => {
+        const data = d.data();
+        return data.senderId === activeUser.id && !data.isRead;
+      });
+
+      if (unreadMsgs.length > 0) {
+        const batch = writeBatch(db);
+        unreadMsgs.forEach(d => {
+          batch.update(d.ref, { isRead: true, readAt: serverTimestamp() });
+        });
+        await batch.commit();
+      }
     });
 
     return () => unsub();
@@ -62,24 +83,61 @@ function Messages() {
 
     const chatId = getChatId(user.uid, activeUser.id);
     const text = newMessage;
-    setNewMessage(""); // Optimistic clear
+    setNewMessage(""); 
 
     try {
-      // Ensure chat document exists (optional, useful for recent lists)
       await setDoc(doc(db, "chats", chatId), {
         participants: [user.uid, activeUser.id],
         lastMessage: text,
         lastMessageTime: serverTimestamp()
       }, { merge: true });
 
-      // Add message
       await addDoc(collection(db, "chats", chatId, "messages"), {
         senderId: user.uid,
         text,
-        timestamp: serverTimestamp()
+        timestamp: serverTimestamp(),
+        isRead: false,
+        isEdited: false,
+        isDeleted: false
       });
     } catch (error) {
       console.error("Error sending message:", error);
+    }
+  };
+
+  const handleUpdateMessage = async (e) => {
+    e.preventDefault();
+    if (!editMsgText.trim() || !editingMsgId || !activeUser) return;
+
+    const chatId = getChatId(user.uid, activeUser.id);
+    try {
+      await updateDoc(doc(db, "chats", chatId, "messages", editingMsgId), {
+        text: editMsgText,
+        isEdited: true,
+        editedAt: serverTimestamp()
+      });
+      setEditingMsgId(null);
+      setEditMsgText("");
+    } catch (error) {
+      toast.error("Failed to edit message");
+    }
+  };
+
+  const handleDeleteMessage = async (msgId, softDelete = true) => {
+    if (!activeUser) return;
+    const chatId = getChatId(user.uid, activeUser.id);
+    setActiveMenu(null);
+    try {
+      if (softDelete) {
+        await updateDoc(doc(db, "chats", chatId, "messages", msgId), {
+          text: "🚫 This message was deleted",
+          isDeleted: true
+        });
+      } else {
+        await deleteDoc(doc(db, "chats", chatId, "messages", msgId));
+      }
+    } catch (error) {
+      toast.error("Failed to delete message");
     }
   };
 
@@ -115,7 +173,11 @@ function Messages() {
               filteredUsers.map(u => (
                 <div 
                   key={u.id}
-                  onClick={() => setActiveUser(u)}
+                  onClick={() => {
+                    setActiveUser(u);
+                    setEditingMsgId(null);
+                    setActiveMenu(null);
+                  }}
                   className={`flex items-center gap-3 p-4 cursor-pointer border-b transition-colors ${
                     activeUser?.id === u.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-gray-100 border-l-4 border-l-transparent'
                   }`}
@@ -134,7 +196,7 @@ function Messages() {
         </div>
 
         {/* Chat Pane */}
-        <div className="w-2/3 flex flex-col bg-white">
+        <div className="w-2/3 flex flex-col bg-white relative">
           {activeUser ? (
             <>
               {/* Chat Header */}
@@ -149,25 +211,92 @@ function Messages() {
               </div>
 
               {/* Messages Area */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50" onClick={() => setActiveMenu(null)}>
                 {messages.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-gray-400">
                     <MessageSquare className="w-12 h-12 mb-2 text-gray-300" />
-                    <p>Start a new conversation with {activeUser.name}</p>
+                    <p>Start a secure conversation with {activeUser.name}</p>
                   </div>
                 ) : (
                   messages.map(msg => {
                     const isMine = msg.senderId === user.uid;
+                    const isEditingThis = editingMsgId === msg.id;
+
                     return (
-                      <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[70%] rounded-2xl px-4 py-2 ${
+                      <div key={msg.id} className={`flex group ${isMine ? 'justify-end' : 'justify-start'}`}>
+                        
+                        {/* Action Menu (Only for sender and non-deleted messages) */}
+                        {isMine && !msg.isDeleted && !isEditingThis && (
+                          <div className="relative opacity-0 group-hover:opacity-100 transition-opacity flex items-center pr-2">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveMenu(activeMenu === msg.id ? null : msg.id);
+                              }}
+                              className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-200"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                            {activeMenu === msg.id && (
+                              <div className="absolute right-8 top-0 bg-white border shadow-lg rounded-md overflow-hidden z-20 w-40 flex flex-col">
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); setEditingMsgId(msg.id); setEditMsgText(msg.text); setActiveMenu(null); }}
+                                  className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 text-gray-700"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" /> Edit Message
+                                </button>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg.id, true); }}
+                                  className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-red-50 text-red-600"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Delete (Soft)
+                                </button>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg.id, false); }}
+                                  className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-red-50 text-red-600 border-t"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Delete for everyone
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Message Bubble */}
+                        <div className={`max-w-[70%] rounded-2xl px-4 py-2 relative ${
                           isMine ? 'bg-blue-600 text-white rounded-br-none shadow-sm' : 'bg-white border text-gray-900 rounded-bl-none shadow-sm'
-                        }`}>
-                          <p className="text-sm">{msg.text}</p>
-                          <p className={`text-[10px] mt-1 text-right ${isMine ? 'text-blue-100' : 'text-gray-400'}`}>
-                            {msg.timestamp?.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) || 'Sending...'}
-                          </p>
+                        } ${msg.isDeleted ? 'italic text-opacity-70 bg-gray-100 border border-gray-300 text-gray-500' : ''}`}>
+                          
+                          {isEditingThis ? (
+                            <form onSubmit={handleUpdateMessage} className="flex gap-2">
+                              <input 
+                                autoFocus
+                                className="text-sm bg-blue-700 text-white placeholder-blue-300 border-b border-blue-400 focus:outline-none focus:border-white px-1"
+                                value={editMsgText}
+                                onChange={(e) => setEditMsgText(e.target.value)}
+                              />
+                              <button type="submit" className="text-white hover:text-blue-200">
+                                <Send className="w-3 h-3" />
+                              </button>
+                            </form>
+                          ) : (
+                            <p className="text-sm break-words whitespace-pre-wrap">{msg.text}</p>
+                          )}
+
+                          {/* Metadata (Time, Edited tag, Read Receipts) */}
+                          <div className={`flex items-center justify-end gap-1 text-[10px] mt-1 ${isMine ? (msg.isDeleted ? 'text-gray-400' : 'text-blue-200') : 'text-gray-400'}`}>
+                            {msg.isEdited && !msg.isDeleted && <span className="italic mr-1">(edited)</span>}
+                            <span>{msg.timestamp?.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) || 'Sending...'}</span>
+                            
+                            {/* Read Receipts logic */}
+                            {isMine && !msg.isDeleted && (
+                              <span className="ml-1">
+                                {msg.isRead ? <CheckCheck className="w-3.5 h-3.5" /> : <Check className="w-3 h-3 opacity-70" />}
+                              </span>
+                            )}
+                          </div>
                         </div>
+
                       </div>
                     )
                   })
@@ -177,17 +306,24 @@ function Messages() {
 
               {/* Input Area */}
               <div className="p-4 bg-white border-t">
-                <form onSubmit={handleSendMessage} className="flex gap-2">
+                {editingMsgId ? (
+                  <div className="flex items-center justify-between text-sm text-gray-500 px-2 py-1 mb-2 bg-yellow-50 rounded border border-yellow-100">
+                    <span>Editing message...</span>
+                    <button onClick={() => setEditingMsgId(null)} className="hover:text-gray-800 underline">Cancel</button>
+                  </div>
+                ) : null}
+
+                <form onSubmit={editingMsgId ? handleUpdateMessage : handleSendMessage} className="flex gap-2">
                   <input
                     type="text"
                     placeholder="Type your message..."
                     className="flex-1 h-10 rounded-full border border-gray-300 bg-gray-50 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
+                    value={editingMsgId ? editMsgText : newMessage}
+                    onChange={(e) => editingMsgId ? setEditMsgText(e.target.value) : setNewMessage(e.target.value)}
                   />
                   <button
                     type="submit"
-                    disabled={!newMessage.trim()}
+                    disabled={editingMsgId ? !editMsgText.trim() : !newMessage.trim()}
                     className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
                   >
                     <Send className="w-4 h-4 ml-0.5" />
@@ -209,5 +345,5 @@ function Messages() {
 
 export default withAuth(Messages, ["admin", "doctor", "staff", "receptionist", "accountant"]);
 
-// Need to define MessageSquare since I used it in empty state placeholder
+// Icon dependency placeholder
 import { MessageSquare } from "lucide-react";
