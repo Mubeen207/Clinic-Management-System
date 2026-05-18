@@ -44,7 +44,7 @@ function Messages() {
     return uid1 > uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
   };
 
-  // Listen to active conversations for previews and unread counts
+
   useEffect(() => {
     if (!user) return;
     const q = query(collection(db, "chats"), where("participants", "array-contains", user.uid));
