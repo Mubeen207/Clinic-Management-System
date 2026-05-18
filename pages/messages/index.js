@@ -58,7 +58,7 @@ function Messages() {
     return () => unsub();
   }, [user]);
 
-  // Listen to messages and mark as read
+ 
   useEffect(() => {
     if (!activeUser || !user) return;
 
