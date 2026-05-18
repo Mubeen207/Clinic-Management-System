@@ -25,12 +25,12 @@ function Messages() {
 
   const [chatsData, setChatsData] = useState({});
 
-  // Fetch all allowed users
+ 
   useEffect(() => {
     if (!user) return;
     const fetchUsers = async () => {
       const snap = await getDocs(collection(db, "users"));
-      // Only authorized staff, no patients
+    
       const staffList = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .filter(u => u.id !== user.uid && u.role !== "patient" && u.status !== "blacklisted");
