@@ -13,7 +13,7 @@ function Messages() {
   const [users, setUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeUser, setActiveUser] = useState(null);
-  
+
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
   const messagesEndRef = useRef(null);
@@ -25,12 +25,12 @@ function Messages() {
 
   const [chatsData, setChatsData] = useState({});
 
- 
+
   useEffect(() => {
     if (!user) return;
     const fetchUsers = async () => {
       const snap = await getDocs(collection(db, "users"));
-    
+
       const staffList = snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .filter(u => u.id !== user.uid && u.role !== "patient" && u.status !== "blacklisted");
@@ -39,7 +39,7 @@ function Messages() {
     fetchUsers();
   }, [user]);
 
- 
+
   const getChatId = (uid1, uid2) => {
     return uid1 > uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
   };
@@ -58,7 +58,7 @@ function Messages() {
     return () => unsub();
   }, [user]);
 
- 
+
   useEffect(() => {
     if (!activeUser || !user) return;
 
@@ -74,7 +74,7 @@ function Messages() {
     const unsub = onSnapshot(q, async (snap) => {
       const msgs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMessages(msgs);
-      
+
       // Scroll to bottom
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -104,7 +104,7 @@ function Messages() {
 
     const chatId = getChatId(user.uid, activeUser.id);
     const text = newMessage;
-    setNewMessage(""); 
+    setNewMessage("");
 
     try {
       await setDoc(doc(db, "chats", chatId), {
@@ -166,15 +166,15 @@ function Messages() {
     }
   };
 
-  const filteredUsers = users.filter(u => 
-    u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredUsers = users.filter(u =>
+    u.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.role?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
     <DashboardLayout>
       <div className="h-[calc(100vh-8rem)] flex overflow-hidden border rounded-xl bg-white shadow-sm relative">
-        
+
         {/* Sidebar Contacts list */}
         <div className={`border-r flex-col bg-gray-50 w-full md:w-1/3 ${activeUser ? 'hidden md:flex' : 'flex'}`}>
           <div className="p-4 border-b bg-white">
@@ -190,7 +190,7 @@ function Messages() {
               />
             </div>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto">
             {filteredUsers.length === 0 ? (
               <p className="p-4 text-center text-sm text-gray-500">No users found.</p>
@@ -203,51 +203,50 @@ function Messages() {
                 })
                 .sort((a, b) => b.lastTime - a.lastTime) // Sort by recent message
                 .map(u => {
-                const unread = u.chatInfo?.unreadCount?.[user.uid] || 0;
-                return (
-                  <div 
-                    key={u.id}
-                    onClick={() => {
-                      setActiveUser(u);
-                      setEditingMsgId(null);
-                      setActiveMenu(null);
-                      // Clear unread immediately on UI side
-                      if (u.chatInfo) {
-                        updateDoc(doc(db, "chats", u.chatInfo.id), {
-                          [`unreadCount.${user.uid}`]: 0
-                        }).catch(() => {});
-                      }
-                    }}
-                    className={`flex items-center gap-3 p-4 cursor-pointer border-b transition-colors ${
-                      activeUser?.id === u.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-gray-100 border-l-4 border-l-transparent'
-                    }`}
-                  >
-                    <div className="relative">
-                      <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-lg">
-                        {u.name ? u.name[0] : <User className="w-6 h-6" />}
-                      </div>
-                      {unread > 0 && (
-                        <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white shadow-sm">
-                          {unread > 99 ? '99+' : unread}
+                  const unread = u.chatInfo?.unreadCount?.[user.uid] || 0;
+                  return (
+                    <div
+                      key={u.id}
+                      onClick={() => {
+                        setActiveUser(u);
+                        setEditingMsgId(null);
+                        setActiveMenu(null);
+                        // Clear unread immediately on UI side
+                        if (u.chatInfo) {
+                          updateDoc(doc(db, "chats", u.chatInfo.id), {
+                            [`unreadCount.${user.uid}`]: 0
+                          }).catch(() => { });
+                        }
+                      }}
+                      className={`flex items-center gap-3 p-4 cursor-pointer border-b transition-colors ${activeUser?.id === u.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-gray-100 border-l-4 border-l-transparent'
+                        }`}
+                    >
+                      <div className="relative">
+                        <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-lg">
+                          {u.name ? u.name[0] : <User className="w-6 h-6" />}
                         </div>
-                      )}
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                      <div className="flex justify-between items-baseline mb-0.5">
-                        <p className={`font-semibold truncate ${unread > 0 ? 'text-black' : 'text-gray-900'}`}>{u.name}</p>
-                        {u.chatInfo?.lastMessageTime && (
-                          <span className={`text-[10px] ${unread > 0 ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
-                            {new Date(u.chatInfo.lastMessageTime.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                          </span>
+                        {unread > 0 && (
+                          <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full border-2 border-white shadow-sm">
+                            {unread > 99 ? '99+' : unread}
+                          </div>
                         )}
                       </div>
-                      <p className={`text-xs truncate ${unread > 0 ? 'text-gray-900 font-bold' : 'text-gray-500'}`}>
-                        {u.chatInfo?.lastMessage || u.role.toUpperCase()}
-                      </p>
+                      <div className="flex-1 overflow-hidden">
+                        <div className="flex justify-between items-baseline mb-0.5">
+                          <p className={`font-semibold truncate ${unread > 0 ? 'text-black' : 'text-gray-900'}`}>{u.name}</p>
+                          {u.chatInfo?.lastMessageTime && (
+                            <span className={`text-[10px] ${unread > 0 ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
+                              {new Date(u.chatInfo.lastMessageTime.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-xs truncate ${unread > 0 ? 'text-gray-900 font-bold' : 'text-gray-500'}`}>
+                          {u.chatInfo?.lastMessage || u.role.toUpperCase()}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                );
-              })
+                  );
+                })
             )}
           </div>
         </div>
@@ -258,7 +257,7 @@ function Messages() {
             <>
               {/* Chat Header */}
               <div className="p-4 border-b flex items-center gap-3 bg-white shadow-sm z-10">
-                <button 
+                <button
                   onClick={() => setActiveUser(null)}
                   className="md:hidden p-2 -ml-2 text-gray-500 hover:bg-gray-100 rounded-full"
                 >
@@ -287,11 +286,11 @@ function Messages() {
 
                     return (
                       <div key={msg.id} className={`flex group ${isMine ? 'justify-end' : 'justify-start'}`}>
-                        
+
                         {/* Action Menu (Only for sender and non-deleted messages) */}
                         {isMine && !msg.isDeleted && !isEditingThis && (
                           <div className="relative opacity-0 group-hover:opacity-100 transition-opacity flex items-center pr-2">
-                            <button 
+                            <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setActiveMenu(activeMenu === msg.id ? null : msg.id);
@@ -302,19 +301,19 @@ function Messages() {
                             </button>
                             {activeMenu === msg.id && (
                               <div className="absolute right-8 top-0 bg-white border shadow-lg rounded-md overflow-hidden z-20 w-40 flex flex-col">
-                                <button 
+                                <button
                                   onClick={(e) => { e.stopPropagation(); setEditingMsgId(msg.id); setEditMsgText(msg.text); setActiveMenu(null); }}
                                   className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 text-gray-700"
                                 >
                                   <Edit2 className="w-3.5 h-3.5" /> Edit Message
                                 </button>
-                                <button 
+                                <button
                                   onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg.id, true); }}
                                   className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-red-50 text-red-600"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" /> Delete (Soft)
                                 </button>
-                                <button 
+                                <button
                                   onClick={(e) => { e.stopPropagation(); handleDeleteMessage(msg.id, false); }}
                                   className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-red-50 text-red-600 border-t"
                                 >
@@ -326,13 +325,12 @@ function Messages() {
                         )}
 
                         {/* Message Bubble */}
-                        <div className={`max-w-[70%] rounded-2xl px-4 py-2 relative ${
-                          isMine ? 'bg-blue-600 text-white rounded-br-none shadow-sm' : 'bg-white border text-gray-900 rounded-bl-none shadow-sm'
-                        } ${msg.isDeleted ? 'italic text-opacity-70 bg-gray-100 border border-gray-300 text-gray-500' : ''}`}>
-                          
+                        <div className={`max-w-[70%] rounded-2xl px-4 py-2 relative ${isMine ? 'bg-blue-600 text-white rounded-br-none shadow-sm' : 'bg-white border text-gray-900 rounded-bl-none shadow-sm'
+                          } ${msg.isDeleted ? 'italic text-opacity-70 bg-gray-100 border border-gray-300 text-gray-500' : ''}`}>
+
                           {isEditingThis ? (
                             <form onSubmit={handleUpdateMessage} className="flex gap-2">
-                              <input 
+                              <input
                                 autoFocus
                                 className="text-sm bg-blue-700 text-white placeholder-blue-300 border-b border-blue-400 focus:outline-none focus:border-white px-1"
                                 value={editMsgText}
@@ -349,8 +347,8 @@ function Messages() {
                           {/* Metadata (Time, Edited tag, Read Receipts) */}
                           <div className={`flex items-center justify-end gap-1 text-[10px] mt-1 ${isMine ? (msg.isDeleted ? 'text-gray-400' : 'text-blue-200') : 'text-gray-400'}`}>
                             {msg.isEdited && !msg.isDeleted && <span className="italic mr-1">(edited)</span>}
-                            <span>{msg.timestamp?.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) || 'Sending...'}</span>
-                            
+                            <span>{msg.timestamp?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'Sending...'}</span>
+
                             {/* Read Receipts logic */}
                             {isMine && !msg.isDeleted && (
                               <span className="ml-1">
