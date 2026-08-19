@@ -19,86 +19,63 @@ export function AuthProvider({ children }) {
     } catch (error) {
       console.error("Logout Error:", error);
     } finally {
-      localStorage.removeItem("hospital_user");
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("hospital_user");
+      }
       setUser(null);
       setRole(null);
       router.push("/login");
     }
   };
 
-  const loginUser = (userData, userRole) => {
-    const userDataToStore = { user: userData, role: userRole };
-    localStorage.setItem("hospital_user", JSON.stringify(userDataToStore));
-    setUser(userData);
-    setRole(userRole);
-    setLoading(false);
-  };
-
   useEffect(() => {
-    // Initial sync from local storage for faster UI paints
-    const storedUser = typeof window !== "undefined" ? localStorage.getItem("hospital_user") : null;
-    if (storedUser) {
-      try {
-        const parsed = JSON.parse(storedUser);
-        if (parsed?.user) {
-          setUser(parsed.user);
-          setRole(parsed.role);
-        }
-      } catch (e) {
-        console.error("Storage error", e);
-      }
-    }
-
     let userDocUnsub = null;
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        userDocUnsub = onSnapshot(doc(db, "users", firebaseUser.uid), async (userDoc) => {
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            if (userData.status === "blacklisted") {
-              await signOut(auth);
-              localStorage.removeItem("hospital_user");
-              setUser(null);
-              setRole(null);
-              toast.error("Your account has been blacklisted. Please contact administration.", { duration: 3000 });
-              router.push("/login");
-            } else {
-              const userRole = userData.role;
-              const userDataToStore = {
-                user: { uid: firebaseUser.uid, email: firebaseUser.email, name: userData.name || firebaseUser.email },
-                role: userRole,
-              };
+    // Firebase Auth is the single source of truth for logged-in users
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (userDocUnsub) {
+        userDocUnsub();
+        userDocUnsub = null;
+      }
 
-              localStorage.setItem("hospital_user", JSON.stringify(userDataToStore));
-              setUser(userDataToStore.user);
-              setRole(userRole);
+      if (firebaseUser) {
+        userDocUnsub = onSnapshot(
+          doc(db, "users", firebaseUser.uid),
+          async (userDoc) => {
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              if (userData.status === "blacklisted" || userData.status === "disabled") {
+                await signOut(auth);
+                if (typeof window !== "undefined") {
+                  localStorage.removeItem("hospital_user");
+                }
+                setUser(null);
+                setRole(null);
+                toast.error("Your account has been disabled or blacklisted. Please contact administration.", { duration: 3000 });
+                router.push("/login");
+              } else {
+                const userRole = userData.role;
+                setUser({
+                  uid: firebaseUser.uid,
+                  email: firebaseUser.email,
+                  name: userData.name || firebaseUser.email,
+                });
+                setRole(userRole);
+              }
+            } else {
+              setUser({ uid: firebaseUser.uid, email: firebaseUser.email });
+              setRole(null);
             }
-          } else {
-            setUser({ uid: firebaseUser.uid, email: firebaseUser.email });
-            setRole(null);
+            setLoading(false);
+          },
+          (err) => {
+            console.error("Firestore snapshot error:", err);
+            setLoading(false);
           }
-          setLoading(false);
-        }, (err) => {
-          console.error("Firestore snapshot error:", err);
-          setLoading(false);
-        });
+        );
       } else {
-        if (userDocUnsub) userDocUnsub();
-        // If not logged in via Firebase Auth, check if logged in via hospital_user session
-        const localStored = typeof window !== "undefined" ? localStorage.getItem("hospital_user") : null;
-        if (localStored) {
-          try {
-            const parsed = JSON.parse(localStored);
-            if (parsed && parsed.user) {
-              setUser(parsed.user);
-              setRole(parsed.role);
-              setLoading(false);
-              return;
-            }
-          } catch (e) {
-            console.error("Storage parse error", e);
-          }
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("hospital_user");
         }
         setUser(null);
         setRole(null);
@@ -114,7 +91,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, logout, loginUser }}>
+    <AuthContext.Provider value={{ user, role, loading, logout }}>
       {children}
     </AuthContext.Provider>
   );

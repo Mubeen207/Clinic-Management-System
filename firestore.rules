@@ -1,0 +1,139 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function getUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isActiveUser() {
+      return signedIn() && getUserDoc().status == 'active';
+    }
+
+    function getUserRole() {
+      return getUserDoc().role;
+    }
+
+    function isAdmin() {
+      return isActiveUser() && getUserRole() == 'admin';
+    }
+
+    function isDoctor() {
+      return isActiveUser() && getUserRole() == 'doctor';
+    }
+
+    function isStaff() {
+      return isActiveUser() && (getUserRole() == 'staff' || getUserRole() == 'receptionist');
+    }
+
+    function isAccountant() {
+      return isActiveUser() && getUserRole() == 'accountant';
+    }
+
+    function isOwner(uid) {
+      return isActiveUser() && request.auth.uid == uid;
+    }
+
+    // 1. Users collection
+    match /users/{userId} {
+      allow read: if isActiveUser();
+      allow create: if signedIn() && request.auth.uid == userId
+        && request.resource.data.role == 'staff'
+        && request.resource.data.status == 'active'
+        && !('password' in request.resource.data)
+        && !('tempPassword' in request.resource.data)
+        && !('passwordLastChanged' in request.resource.data);
+      allow update: if isAdmin()
+        && !('password' in request.resource.data)
+        && !('tempPassword' in request.resource.data)
+        && !('passwordLastChanged' in request.resource.data);
+      allow delete: if false;
+    }
+
+    // 2. Patients collection
+    match /patients/{patientId} {
+      allow read: if isActiveUser() && (isStaff() || isDoctor() || isAdmin());
+      allow create, update: if isActiveUser() && (isStaff() || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // 3. Appointments collection
+    match /appointments/{appointmentId} {
+      allow read: if isActiveUser() && (isStaff() || isAdmin() || (isDoctor() && resource.data.doctorId == request.auth.uid));
+      allow create: if isActiveUser() && (isStaff() || isAdmin());
+      allow update: if isActiveUser() && (isStaff() || isAdmin() || (isDoctor() && resource.data.doctorId == request.auth.uid));
+      allow delete: if isAdmin();
+    }
+
+    // 4. Invoices collection (billing data)
+    match /invoices/{invoiceId} {
+      allow read: if isActiveUser() && (isAccountant() || isAdmin() || isStaff());
+      allow create, update: if isActiveUser() && (isAccountant() || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // 5. Prescriptions collection (standalone collection fallback)
+    match /prescriptions/{prescriptionId} {
+      allow read: if isActiveUser() && (isStaff() || isAdmin() || (isDoctor() && resource.data.doctorId == request.auth.uid));
+      allow create: if isActiveUser() && (isStaff() || isAdmin() || (isDoctor() && request.resource.data.doctorId == request.auth.uid));
+      allow update: if isActiveUser() && (isStaff() || isAdmin() || (isDoctor() && resource.data.doctorId == request.auth.uid));
+      allow delete: if isAdmin();
+    }
+
+    // 6. Status Logs collection (audit logs)
+    match /statusLogs/{logId} {
+      allow read, create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // 7. Announcements collection
+    match /announcements/{announcementId} {
+      allow read: if isActiveUser();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isActiveUser()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['detailedReactions'])
+        && request.resource.data.detailedReactions.diff(resource.data.get('detailedReactions', {})).affectedKeys().hasOnly([request.auth.uid])
+      );
+    }
+
+    // 8. Complaints collection
+    match /complaints/{complaintId} {
+      allow create: if isActiveUser() && request.resource.data.reporterId == request.auth.uid;
+      allow read: if isActiveUser() && (isAdmin() || resource.data.reporterId == request.auth.uid);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 9. Chats collection
+    match /chats/{chatId} {
+      allow read: if isActiveUser() && (request.auth.uid in resource.data.participants || isAdmin());
+      allow create: if isActiveUser() && (request.resource.data.participants.hasAll([request.auth.uid]) || isAdmin());
+      allow update: if isActiveUser() && (request.auth.uid in resource.data.participants || isAdmin())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessage', 'lastMessageTime', 'unreadCount']);
+      allow delete: if isAdmin();
+
+      // Subcollection: messages
+      match /messages/{messageId} {
+        allow read: if isActiveUser() && (request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants || isAdmin());
+        allow create: if isActiveUser() && request.resource.data.senderId == request.auth.uid
+          && (request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants || isAdmin());
+        allow update: if isActiveUser() && (
+          (resource.data.senderId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'isEdited', 'editedAt', 'isDeleted'])) ||
+          (request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead', 'readAt']))
+        );
+        allow delete: if isActiveUser() && resource.data.senderId == request.auth.uid;
+      }
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

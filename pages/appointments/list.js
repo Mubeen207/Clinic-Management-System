@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import Link from "next/link";
 import { CalendarPlus } from "lucide-react";
 
@@ -16,20 +16,31 @@ function AppointmentsList() {
   const [filter, setFilter] = useState("All"); // All, Pending, Confirmed, Completed, Cancelled
 
   useEffect(() => {
-    // Ideally if doctor, we only query their appointments.
-    // For simplicity in UI filter, we'll fetch all and filter client side, or better, query side.
-    const q = query(collection(db, "appointments"), orderBy("createdAt", "desc"));
+    if (!user) return;
+
+    // Doctor role queries ONLY appointments assigned to them to match Firestore security rules
+    const q =
+      role === "doctor"
+        ? query(collection(db, "appointments"), where("doctorId", "==", user.uid))
+        : query(collection(db, "appointments"), orderBy("createdAt", "desc"));
+
     const unsub = onSnapshot(q, (snap) => {
-      let data = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const data = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       if (role === "doctor") {
-        data = data.filter(d => d.doctorId === user.uid);
+        data.sort(
+          (a, b) =>
+            new Date(b.createdAt?.toDate ? b.createdAt.toDate() : 0) -
+            new Date(a.createdAt?.toDate ? a.createdAt.toDate() : 0)
+        );
       }
       setAppointments(data);
     });
     return () => unsub();
   }, [role, user]);
 
-  const filtered = appointments.filter(a => filter === "All" ? true : a.status === filter);
+  const filtered = appointments.filter((a) =>
+    filter === "All" ? true : a.status === filter
+  );
 
   return (
     <DashboardLayout>
@@ -52,12 +63,14 @@ function AppointmentsList() {
           <CardHeader className="border-b bg-gray-50/50 flex flex-col sm:flex-row items-start sm:items-center justify-between py-4 gap-4">
             <CardTitle>Schedule</CardTitle>
             <div className="flex gap-2">
-              {["All", "Pending", "Confirmed", "Completed", "Cancelled"].map(f => (
+              {["All", "Pending", "Confirmed", "Completed", "Cancelled"].map((f) => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
                   className={`px-3 py-1 text-xs rounded-full font-medium transition ${
-                    filter === f ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                    filter === f
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 text-gray-600 hover:bg-gray-300"
                   }`}
                 >
                   {f}
@@ -95,17 +108,28 @@ function AppointmentsList() {
                           {app.date} <span className="text-gray-300 mx-1">|</span> {app.time}
                         </td>
                         <td className="px-6 py-4">
-                           <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            app.status === "Completed" ? "bg-green-100 text-green-800"
-                            : app.status === "Cancelled" ? "bg-red-100 text-red-800"
-                            : app.status === "Confirmed" ? "bg-blue-100 text-blue-800"
-                            : "bg-yellow-100 text-yellow-800"
-                          }`}>
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              app.status === "Completed"
+                                ? "bg-green-100 text-green-800"
+                                : app.status === "Cancelled"
+                                ? "bg-red-100 text-red-800"
+                                : app.status === "Confirmed"
+                                ? "bg-blue-100 text-blue-800"
+                                : "bg-yellow-100 text-yellow-800"
+                            }`}
+                          >
                             {app.status || "Pending"}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <Link href={app.status === "Completed" ? `/reports/${app.id}` : `/appointments/${app.id}`}>
+                          <Link
+                            href={
+                              app.status === "Completed"
+                                ? `/reports/${app.id}`
+                                : `/appointments/${app.id}`
+                            }
+                          >
                             <Button variant="ghost" size="sm" className="text-blue-600">
                               {app.status === "Completed" ? "View Report" : "Manage"}
                             </Button>

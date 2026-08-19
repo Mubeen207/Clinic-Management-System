@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import Link from "next/link";
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
-import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { toast } from "react-hot-toast";
 
 import { auth, db } from "@/src/services/firebase/config";
@@ -18,13 +18,14 @@ export default function Login() {
   const [authError, setAuthError] = useState("");
   
   const router = useRouter();
-  const { user, role, loading, loginUser } = useAuth();
+  const { user, role, loading } = useAuth();
 
   useEffect(() => {
     if (!loading && user && role) {
       if (role === "admin") router.replace("/dashboard/AdminDashboard");
       else if (role === "doctor") router.replace("/dashboard/DoctorDashboard");
-      else if (role === "staff" || role === "receptionist" || role === "accountant") router.replace("/dashboard/StaffDashboard");
+      else if (role === "accountant") router.replace("/dashboard/AccountantDashboard");
+      else if (role === "staff" || role === "receptionist") router.replace("/dashboard/StaffDashboard");
       else router.replace("/");
     }
   }, [user, role, loading, router]);
@@ -53,34 +54,11 @@ export default function Login() {
 
     try {
       const cleanEmail = email.trim();
-      let loggedInUid = null;
-      let userData = null;
-
-      // 1. Try standard Firebase Auth login
-      try {
-        const { user: firebaseUser } = await signInWithEmailAndPassword(auth, cleanEmail, password);
-        loggedInUid = firebaseUser.uid;
-        const userDoc = await getDoc(doc(db, "users", loggedInUid));
-        if (userDoc.exists()) userData = userDoc.data();
-      } catch (authErr) {
-        // 2. Fallback: Check if Admin set a direct password (tempPassword) in Firestore
-        const q = query(collection(db, "users"), where("email", "==", cleanEmail));
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-          const matchedDoc = snap.docs[0];
-          const matchedData = matchedDoc.data();
-          if (matchedData.tempPassword && matchedData.tempPassword === password) {
-            loggedInUid = matchedDoc.id;
-            userData = matchedData;
-          } else {
-            throw authErr;
-          }
-        } else {
-          throw authErr;
-        }
-      }
-
-      if (userData) {
+      const { user: firebaseUser } = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      
+      const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
         const userRole = userData.role;
 
         if (userData.status === "blacklisted" || userData.status === "disabled") {
@@ -92,13 +70,11 @@ export default function Login() {
           return;
         }
 
-        const sessionUser = { uid: loggedInUid, email: cleanEmail, name: userData.name || cleanEmail };
-        loginUser(sessionUser, userRole);
-
         toast.success(`Welcome back!`, { duration: 2500 });
 
         if (userRole === "admin") router.replace("/dashboard/AdminDashboard");
         else if (userRole === "doctor") router.replace("/dashboard/DoctorDashboard");
+        else if (userRole === "accountant") router.replace("/dashboard/AccountantDashboard");
         else router.replace("/dashboard/StaffDashboard");
       } else {
         const noProfileMsg = "User profile not found.";

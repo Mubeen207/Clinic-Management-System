@@ -7,6 +7,7 @@ import { db } from "@/src/services/firebase/config";
 import { useAuth } from "@/src/context/AuthContext";
 import { DashboardLayout } from "@/src/components/layout/DashboardLayout";
 import { withAuth } from "@/src/components/layout/RouteGuard";
+import { toSentenceCase } from "@/src/utils/formatSentenceCase";
 
 // Helper function to format role names cleanly (e.g. doctor -> Doctor)
 const formatRole = (roleStr) => {
@@ -389,7 +390,7 @@ function Messages() {
                           </span>
                         </div>
                         <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                          {ann.text}
+                          {toSentenceCase(ann.text)}
                         </p>
                       </div>
                     ))

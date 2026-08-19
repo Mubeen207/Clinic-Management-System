@@ -1,37 +1,65 @@
 import { useEffect, useState } from "react";
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
-import { FileText, Download, ShieldAlert, Calendar } from "lucide-react";
+import { collection, onSnapshot, query, orderBy, where } from "firebase/firestore";
+import { FileText, Download, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 
 import { db } from "@/src/services/firebase/config";
+import { useAuth } from "@/src/context/AuthContext";
 import { DashboardLayout } from "@/src/components/layout/DashboardLayout";
 import { withAuth } from "@/src/components/layout/RouteGuard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/common/Card";
 import { Button } from "@/src/components/common/Button";
 
 function ReportsDashboard() {
+  const { user, role } = useAuth();
   const [appointments, setAppointments] = useState([]);
   const [logs, setLogs] = useState([]);
   const [activeTab, setActiveTab] = useState("clinical"); // clinical or security
 
   useEffect(() => {
-    // Clinical Reports
-    const q1 = query(collection(db, "appointments"), orderBy("createdAt", "desc"));
-    const unsub1 = onSnapshot(q1, (snap) => {
-      setAppointments(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(a => a.status === "Completed" || a.doctorNotes));
-    });
+    if (!user) return;
 
-    // Security Logs
-    const q2 = query(collection(db, "statusLogs"), orderBy("createdAt", "desc"));
-    const unsub2 = onSnapshot(q2, (snap) => {
-      setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    let unsub1 = () => {};
+    let unsub2 = () => {};
+
+    // Clinical Reports Subscription (Role Scoped)
+    if (role === "admin" || role === "staff" || role === "receptionist") {
+      const q1 = query(collection(db, "appointments"), orderBy("createdAt", "desc"));
+      unsub1 = onSnapshot(q1, (snap) => {
+        setAppointments(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((a) => a.status === "Completed" || a.doctorNotes)
+        );
+      });
+    } else if (role === "doctor") {
+      const q1 = query(collection(db, "appointments"), where("doctorId", "==", user.uid));
+      unsub1 = onSnapshot(q1, (snap) => {
+        const data = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((a) => a.status === "Completed" || a.doctorNotes);
+        data.sort(
+          (a, b) =>
+            new Date(b.createdAt?.toDate ? b.createdAt.toDate() : 0) -
+            new Date(a.createdAt?.toDate ? a.createdAt.toDate() : 0)
+        );
+        setAppointments(data);
+      });
+    }
+
+    // Security Logs Subscription (Strictly Admin Only)
+    if (role === "admin") {
+      const q2 = query(collection(db, "statusLogs"), orderBy("createdAt", "desc"));
+      unsub2 = onSnapshot(q2, (snap) => {
+        setLogs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      });
+    }
 
     return () => {
       unsub1();
       unsub2();
     };
-  }, []);
+  }, [user, role]);
 
   const downloadCSV = (type) => {
     let dataToExport = [];
@@ -40,29 +68,31 @@ function ReportsDashboard() {
 
     if (type === "clinical") {
       headers = ["Patient Name", "Doctor Name", "Date", "Status", "Reason"];
-      dataToExport = appointments.map(app => [
-        `"${app.patientName}"`, 
-        `"${app.doctorName}"`, 
-        `"${app.date}"`, 
+      dataToExport = appointments.map((app) => [
+        `"${app.patientName}"`,
+        `"${app.doctorName}"`,
+        `"${app.date}"`,
         `"${app.status}"`,
-        `"${app.reason || ""}"`
+        `"${app.reason || ""}"`,
       ]);
       filename = "Clinical_Reports_Export.csv";
     } else {
       headers = ["Action", "Target User", "Target Role", "Reason", "Action By"];
-      dataToExport = logs.map(log => [
+      dataToExport = logs.map((log) => [
         `"${log.action}"`,
         `"${log.targetUserName}"`,
         `"${log.targetUserRole}"`,
         `"${log.reason}"`,
-        `"${log.actionByName}"`
+        `"${log.actionByName}"`,
       ]);
       filename = "Security_Blacklist_Logs.csv";
     }
 
-    const csvContent = "data:text/csv;charset=utf-8," 
-        + headers.join(",") + "\n" 
-        + dataToExport.map(e => e.join(",")).join("\n");
+    const csvContent =
+      "data:text/csv;charset=utf-8," +
+      headers.join(",") +
+      "\n" +
+      dataToExport.map((e) => e.join(",")).join("\n");
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -79,7 +109,7 @@ function ReportsDashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-gray-900">Reports & Analytics</h1>
-            <p className="text-sm text-gray-500">View medical reports and security audit logs.</p>
+            <p className="text-sm text-gray-500">View medical reports and clinical data.</p>
           </div>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => downloadCSV(activeTab)} className="gap-2">
@@ -88,8 +118,8 @@ function ReportsDashboard() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card 
+        <div className={`grid gap-4 ${role === "admin" ? "md:grid-cols-2" : "grid-cols-1"}`}>
+          <Card
             className={`cursor-pointer transition-all ${activeTab === "clinical" ? "ring-2 ring-blue-500" : ""}`}
             onClick={() => setActiveTab("clinical")}
           >
@@ -104,20 +134,22 @@ function ReportsDashboard() {
             </CardContent>
           </Card>
 
-          <Card 
-            className={`cursor-pointer transition-all ${activeTab === "security" ? "ring-2 ring-red-500" : ""}`}
-            onClick={() => setActiveTab("security")}
-          >
-            <CardContent className="p-6 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Security / Blacklist Logs</p>
-                <p className="text-3xl font-bold mt-2 text-gray-900">{logs.length}</p>
-              </div>
-              <div className="p-3 rounded-full bg-red-100">
-                <ShieldAlert className="w-6 h-6 text-red-600" />
-              </div>
-            </CardContent>
-          </Card>
+          {role === "admin" && (
+            <Card
+              className={`cursor-pointer transition-all ${activeTab === "security" ? "ring-2 ring-red-500" : ""}`}
+              onClick={() => setActiveTab("security")}
+            >
+              <CardContent className="p-6 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Security / Blacklist Logs</p>
+                  <p className="text-3xl font-bold mt-2 text-gray-900">{logs.length}</p>
+                </div>
+                <div className="p-3 rounded-full bg-red-100">
+                  <ShieldAlert className="w-6 h-6 text-red-600" />
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <Card>
@@ -125,7 +157,7 @@ function ReportsDashboard() {
             <CardTitle>{activeTab === "clinical" ? "Clinical Directory" : "Audit Log"}</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            {activeTab === "clinical" ? (
+            {activeTab === "clinical" || role !== "admin" ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left text-gray-500">
                   <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b">
@@ -163,7 +195,7 @@ function ReportsDashboard() {
                 </table>
               </div>
             ) : (
-               <div className="overflow-x-auto">
+              <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left text-gray-500">
                   <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b">
                     <tr>
@@ -185,15 +217,21 @@ function ReportsDashboard() {
                       logs.map((log) => (
                         <tr key={log.id} className="bg-white border-b hover:bg-gray-50">
                           <td className="px-6 py-4">
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                              log.action === "blacklisted" ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"
-                            }`}>
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                                log.action === "blacklisted"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-green-100 text-green-800"
+                              }`}
+                            >
                               {log.action.toUpperCase()}
                             </span>
                           </td>
                           <td className="px-6 py-4 font-medium text-gray-900">{log.targetUserName}</td>
                           <td className="px-6 py-4 uppercase text-xs">{log.targetUserRole}</td>
-                          <td className="px-6 py-4 max-w-[200px] truncate" title={log.reason}>{log.reason}</td>
+                          <td className="px-6 py-4 max-w-[200px] truncate" title={log.reason}>
+                            {log.reason}
+                          </td>
                           <td className="px-6 py-4 font-medium text-gray-900">{log.actionByName}</td>
                         </tr>
                       ))
@@ -209,4 +247,4 @@ function ReportsDashboard() {
   );
 }
 
-export default withAuth(ReportsDashboard, ["admin", "accountant", "doctor", "staff"]);
+export default withAuth(ReportsDashboard, ["admin", "doctor", "staff", "receptionist"]);

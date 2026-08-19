@@ -15,7 +15,6 @@ export default function Signup() {
     name: "",
     email: "",
     password: "",
-    role: "staff", // default changed to staff to match DB roles usually
   });
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -23,34 +22,22 @@ export default function Signup() {
   const handleSignup = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
-    if (formData.role === "admin") {
-      const adminKey = prompt("Enter Secret Admin Key to register:");
-      if (adminKey !== "321") {
-        toast.error("Unauthorized Admin creation attempt.");
-        setLoading(false);
-        return;
-      }
-    }
 
     try {
       const { user } = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
 
+      // Privileged roles (doctor, accountant, admin) must be assigned by an authenticated admin through a secure server-side/admin-controlled process.
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
         name: formData.name,
         email: formData.email,
-        role: formData.role,
+        role: "staff",
         status: "active",
         createdAt: serverTimestamp(),
       });
 
       toast.success("Account created successfully!");
-
-      if (formData.role === "admin") router.push("/dashboard/AdminDashboard");
-      else if (formData.role === "doctor") router.push("/dashboard/DoctorDashboard");
-      else if (formData.role === "accountant") router.push("/dashboard/AccountantDashboard");
-      else router.push("/dashboard/StaffDashboard");
+      router.push("/dashboard/StaffDashboard");
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -88,18 +75,17 @@ export default function Signup() {
           placeholder="••••••••"
         />
 
+        {/* Privileged roles must be assigned by an authenticated admin through a secure server-side/admin-controlled process. */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Role
           </label>
           <select
-            className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={formData.role}
-            onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+            disabled
+            className="flex h-10 w-full rounded-md border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-gray-600 focus:outline-none cursor-not-allowed"
+            value="staff"
           >
             <option value="staff">Staff / Receptionist</option>
-            <option value="doctor">Doctor</option>
-            <option value="accountant">Accountant</option>
           </select>
         </div>
 

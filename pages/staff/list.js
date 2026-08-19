@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, where, updateDoc, doc, addDoc, serverTimestamp } from "firebase/firestore";
-import { Search, ShieldAlert, ShieldCheck, Key, Eye, EyeOff } from "lucide-react";
+import { Search, ShieldAlert, ShieldCheck, Key } from "lucide-react";
 import { toast } from "react-hot-toast";
 
-import { db } from "@/src/services/firebase/config";
+import { auth, db } from "@/src/services/firebase/config";
+import { sendPasswordResetEmail } from "firebase/auth";
 import { DashboardLayout } from "@/src/components/layout/DashboardLayout";
 import { withAuth } from "@/src/components/layout/RouteGuard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/common/Card";
@@ -20,8 +21,6 @@ function StaffList() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [reason, setReason] = useState("");
   const [actionType, setActionType] = useState(""); // "blacklist", "whitelist", "changePassword"
-  const [newPassword, setNewPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
@@ -39,23 +38,18 @@ function StaffList() {
     setSelectedUser(targetUser);
     setActionType(type);
     setReason("");
-    setNewPassword("");
-    setShowPassword(false);
     setIsModalOpen(true);
   };
 
   const handleChangePasswordSubmit = async (e) => {
     e.preventDefault();
-    if (!newPassword || newPassword.length < 6) {
-      toast.error("Password must be at least 6 characters.");
+    if (!selectedUser?.email) {
+      toast.error("User email is missing.");
       return;
     }
     setUpdating(true);
     try {
-      await updateDoc(doc(db, "users", selectedUser.id), {
-        tempPassword: newPassword,
-        passwordLastChanged: serverTimestamp()
-      });
+      await sendPasswordResetEmail(auth, selectedUser.email);
 
       await addDoc(collection(db, "statusLogs"), {
         targetUserId: selectedUser.id,
@@ -63,17 +57,16 @@ function StaffList() {
         targetUserRole: selectedUser.role,
         actionBy: user.uid,
         actionByName: user.name || user.email,
-        action: "password_changed",
-        reason: "Admin reset user password directly from Admin panel",
+        action: "password_reset_sent",
+        reason: "Admin initiated password reset email from Admin panel",
         createdAt: serverTimestamp()
       });
 
-      toast.success(`Password updated for ${selectedUser.name || selectedUser.email}!`);
+      toast.success(`Password reset email sent to ${selectedUser.email}!`);
       setIsModalOpen(false);
-      setNewPassword("");
     } catch (error) {
-      console.error("Change Password Error:", error);
-      toast.error("Failed to update password.");
+      console.error("Password Reset Error:", error);
+      toast.error("Failed to send password reset email.");
     } finally {
       setUpdating(false);
     }
@@ -206,42 +199,18 @@ function StaffList() {
           <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
             {actionType === "changePassword" ? (
               <div>
-                <h2 className="text-xl font-bold text-gray-900 mb-1">Set New Password</h2>
+                <h2 className="text-xl font-bold text-gray-900 mb-1">Reset User Password</h2>
                 <p className="text-sm text-gray-500 mb-4">
-                  Set a new account password for <strong>{selectedUser?.name || "Staff"}</strong> (<code>{selectedUser?.email}</code>).
+                  Send a secure password reset email to <strong>{selectedUser?.name || "Staff"}</strong> (<code>{selectedUser?.email}</code>).
                 </p>
 
                 <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      New Password *
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        required
-                        minLength={6}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Enter new password (min 6 chars)"
-                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-                      >
-                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                      </button>
-                    </div>
-                  </div>
-
                   <div className="flex justify-end gap-3 pt-2">
                     <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
                       Cancel
                     </Button>
                     <Button type="submit" isLoading={updating} className="bg-blue-600 hover:bg-blue-700">
-                      Save New Password
+                      Send Reset Email
                     </Button>
                   </div>
                 </form>

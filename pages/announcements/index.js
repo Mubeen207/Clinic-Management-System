@@ -10,6 +10,7 @@ import { withAuth } from "@/src/components/layout/RouteGuard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/common/Card";
 import { Button } from "@/src/components/common/Button";
 import { Input } from "@/src/components/common/Input";
+import { toSentenceCase } from "@/src/utils/formatSentenceCase";
 
 function Announcements() {
   const { user, role } = useAuth();
@@ -258,7 +259,7 @@ function Announcements() {
                       </div>
                       <div>
                         <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-                          {ann.title}
+                          {toSentenceCase(ann.title)}
                         </h3>
                         <p className="text-xs text-gray-500">
                           Posted by <span className="font-semibold text-gray-700">{ann.createdByName}</span> • {ann.createdAt?.toDate().toLocaleString() || 'Just now'}
@@ -293,7 +294,7 @@ function Announcements() {
                   </div>
                   
                   <div className="text-gray-700 whitespace-pre-wrap pl-[52px]">
-                    {ann.content}
+                    {toSentenceCase(ann.content)}
                   </div>
 
                   <div className="mt-6 pl-[52px] flex flex-wrap items-center gap-2 border-t pt-4">
