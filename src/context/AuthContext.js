@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { auth, db } from "@/src/services/firebase/config";
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useRouter } from "next/router";
 import { toast } from "react-hot-toast";
@@ -16,13 +16,22 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     try {
       await signOut(auth);
+    } catch (error) {
+      console.error("Logout Error:", error);
+    } finally {
       localStorage.removeItem("hospital_user");
       setUser(null);
       setRole(null);
       router.push("/login");
-    } catch (error) {
-      console.error("Logout Error:", error);
     }
+  };
+
+  const loginUser = (userData, userRole) => {
+    const userDataToStore = { user: userData, role: userRole };
+    localStorage.setItem("hospital_user", JSON.stringify(userDataToStore));
+    setUser(userData);
+    setRole(userRole);
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -31,10 +40,10 @@ export function AuthProvider({ children }) {
     if (storedUser) {
       try {
         const parsed = JSON.parse(storedUser);
-        // eslint-disable-next-line
-        setUser(parsed.user);
-        // eslint-disable-next-line
-        setRole(parsed.role);
+        if (parsed?.user) {
+          setUser(parsed.user);
+          setRole(parsed.role);
+        }
       } catch (e) {
         console.error("Storage error", e);
       }
@@ -52,7 +61,7 @@ export function AuthProvider({ children }) {
               localStorage.removeItem("hospital_user");
               setUser(null);
               setRole(null);
-              toast.error("Your account has been blacklisted. Please contact administration.");
+              toast.error("Your account has been blacklisted. Please contact administration.", { duration: 3000 });
               router.push("/login");
             } else {
               const userRole = userData.role;
@@ -76,7 +85,21 @@ export function AuthProvider({ children }) {
         });
       } else {
         if (userDocUnsub) userDocUnsub();
-        localStorage.removeItem("hospital_user");
+        // If not logged in via Firebase Auth, check if logged in via hospital_user session
+        const localStored = typeof window !== "undefined" ? localStorage.getItem("hospital_user") : null;
+        if (localStored) {
+          try {
+            const parsed = JSON.parse(localStored);
+            if (parsed && parsed.user) {
+              setUser(parsed.user);
+              setRole(parsed.role);
+              setLoading(false);
+              return;
+            }
+          } catch (e) {
+            console.error("Storage parse error", e);
+          }
+        }
         setUser(null);
         setRole(null);
         setLoading(false);
@@ -91,7 +114,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, logout }}>
+    <AuthContext.Provider value={{ user, role, loading, logout, loginUser }}>
       {children}
     </AuthContext.Provider>
   );

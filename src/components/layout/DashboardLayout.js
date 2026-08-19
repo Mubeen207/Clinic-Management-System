@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
-import { Toaster } from "react-hot-toast";
 
 export function DashboardLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -31,8 +30,6 @@ export function DashboardLayout({ children }) {
           {children}
         </main>
       </div>
-      
-      <Toaster position="top-right" />
     </div>
   );
 }

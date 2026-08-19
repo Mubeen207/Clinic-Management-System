@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { collection, onSnapshot, query, where, updateDoc, doc, addDoc, serverTimestamp } from "firebase/firestore";
-import { Search, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Search, ShieldAlert, ShieldCheck, Key, Eye, EyeOff } from "lucide-react";
 import { toast } from "react-hot-toast";
 
 import { db } from "@/src/services/firebase/config";
@@ -19,7 +19,9 @@ function StaffList() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [reason, setReason] = useState("");
-  const [actionType, setActionType] = useState(""); // "blacklist" or "whitelist"
+  const [actionType, setActionType] = useState(""); // "blacklist", "whitelist", "changePassword"
+  const [newPassword, setNewPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
@@ -37,7 +39,44 @@ function StaffList() {
     setSelectedUser(targetUser);
     setActionType(type);
     setReason("");
+    setNewPassword("");
+    setShowPassword(false);
     setIsModalOpen(true);
+  };
+
+  const handleChangePasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return;
+    }
+    setUpdating(true);
+    try {
+      await updateDoc(doc(db, "users", selectedUser.id), {
+        tempPassword: newPassword,
+        passwordLastChanged: serverTimestamp()
+      });
+
+      await addDoc(collection(db, "statusLogs"), {
+        targetUserId: selectedUser.id,
+        targetUserName: selectedUser.name || selectedUser.email,
+        targetUserRole: selectedUser.role,
+        actionBy: user.uid,
+        actionByName: user.name || user.email,
+        action: "password_changed",
+        reason: "Admin reset user password directly from Admin panel",
+        createdAt: serverTimestamp()
+      });
+
+      toast.success(`Password updated for ${selectedUser.name || selectedUser.email}!`);
+      setIsModalOpen(false);
+      setNewPassword("");
+    } catch (error) {
+      console.error("Change Password Error:", error);
+      toast.error("Failed to update password.");
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const handleStatusChange = async (e) => {
@@ -67,7 +106,6 @@ function StaffList() {
 
       toast.success(`User ${newStatus === "active" ? "whitelisted" : "blacklisted"} successfully!`);
       setIsModalOpen(false);
-      setIsModalOpen(false);
     } catch (error) {
       toast.error("Failed to update status.");
     } finally {
@@ -82,7 +120,7 @@ function StaffList() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-900">Staff Directory</h1>
-          <p className="text-sm text-gray-500">View all clinic staff and receptionists. Manage access via Blacklist.</p>
+          <p className="text-sm text-gray-500">View all clinic staff and receptionists. Manage access & passwords.</p>
         </div>
 
         <Card>
@@ -108,7 +146,7 @@ function StaffList() {
                     <th className="px-6 py-3">Role</th>
                     <th className="px-6 py-3">Email</th>
                     <th className="px-6 py-3">Status</th>
-                    <th className="px-6 py-3 text-right">Access Control</th>
+                    <th className="px-6 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -133,7 +171,16 @@ function StaffList() {
                             {person.status || "active"}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right">
+                        <td className="px-6 py-4 text-right space-x-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="text-blue-600 hover:text-blue-800"
+                            onClick={() => openModal(person, "changePassword")}
+                          >
+                            <Key className="w-4 h-4 mr-1" /> Change Password
+                          </Button>
+
                           {person.status === "blacklisted" ? (
                             <Button variant="ghost" size="sm" className="text-green-600 hover:text-green-800" onClick={() => openModal(person, "whitelist")}>
                               <ShieldCheck className="w-4 h-4 mr-1" /> Whitelist
@@ -157,31 +204,77 @@ function StaffList() {
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
-            <h2 className="text-xl font-bold mb-4">
-              {actionType === "blacklist" ? "Blacklist User" : "Whitelist User"}
-            </h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Are you sure you want to {actionType} <strong>{selectedUser?.name || selectedUser?.email}</strong>?
-            </p>
-            <form onSubmit={handleStatusChange}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Reason for Action *</label>
-                <textarea
-                  required
-                  className="w-full rounded-md border border-gray-300 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="E.g., Suspicious activity, Violation of policy..."
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  rows={3}
-                />
+            {actionType === "changePassword" ? (
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 mb-1">Set New Password</h2>
+                <p className="text-sm text-gray-500 mb-4">
+                  Set a new account password for <strong>{selectedUser?.name || "Staff"}</strong> (<code>{selectedUser?.email}</code>).
+                </p>
+
+                <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      New Password *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        required
+                        minLength={6}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Enter new password (min 6 chars)"
+                        className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+                      >
+                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-2">
+                    <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" isLoading={updating} className="bg-blue-600 hover:bg-blue-700">
+                      Save New Password
+                    </Button>
+                  </div>
+                </form>
               </div>
-              <div className="flex justify-end gap-3">
-                <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                <Button type="submit" isLoading={updating} className={actionType === "blacklist" ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}>
-                  Confirm {actionType}
-                </Button>
-              </div>
-            </form>
+            ) : (
+              <>
+                <h2 className="text-xl font-bold mb-4">
+                  {actionType === "blacklist" ? "Blacklist User" : "Whitelist User"}
+                </h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  Are you sure you want to {actionType} <strong>{selectedUser?.name || selectedUser?.email}</strong>?
+                </p>
+                <form onSubmit={handleStatusChange}>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Reason for Action *</label>
+                    <textarea
+                      required
+                      className="w-full rounded-md border border-gray-300 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="E.g., Suspicious activity, Violation of policy..."
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3">
+                    <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+                    <Button type="submit" isLoading={updating} className={actionType === "blacklist" ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}>
+                      Confirm {actionType}
+                    </Button>
+                  </div>
+                </form>
+              </>
+            )}
           </div>
         </div>
       )}
